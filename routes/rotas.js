@@ -5,7 +5,7 @@ const { getAllRows, getRow, runQuery } = require('../database/connection');
 // GET /orbis/rotas - Listar rotas
 router.get('/', async (req, res) => {
   try {
-    const { page = 1, limit = 50, search, ativo } = req.query;
+    const { page = 1, limit = 50, search, ativa, centro_prod } = req.query;
     const offset = (page - 1) * limit;
 
     let query = 'SELECT * FROM rotas WHERE 1=1';
@@ -19,10 +19,16 @@ router.get('/', async (req, res) => {
       params.push(`%${search}%`, `%${search}%`);
     }
 
-    if (ativo !== undefined) {
-      query += ' AND ativo = ?';
-      countQuery += ' AND ativo = ?';
-      params.push(ativo === 'true' ? 1 : 0);
+    if (ativa !== undefined) {
+      query += ' AND ativa = ?';
+      countQuery += ' AND ativa = ?';
+      params.push(ativa === 'true' ? 1 : 0);
+    }
+
+    if (centro_prod) {
+      query += ' AND centro_prod = ?';
+      countQuery += ' AND centro_prod = ?';
+      params.push(centro_prod);
     }
 
     // Ordenação e paginação
@@ -31,15 +37,14 @@ router.get('/', async (req, res) => {
 
     const [rows, countResult] = await Promise.all([
       getAllRows(query, params),
-      getRow(countQuery, params.slice(0, -2)) // Remove limit e offset do count
+      getRow(countQuery, params.slice(0, -2))
     ]);
 
     // Parse JSON fields
     const rotas = rows.map(row => ({
       ...row,
       etapas: row.etapas ? JSON.parse(row.etapas) : [],
-      configuracoes: row.configuracoes ? JSON.parse(row.configuracoes) : {},
-      ativo: Boolean(row.ativo)
+      ativa: Boolean(row.ativa)
     }));
 
     const total = countResult.total;
@@ -81,8 +86,7 @@ router.get('/:id', async (req, res) => {
     const rota = {
       ...row,
       etapas: row.etapas ? JSON.parse(row.etapas) : [],
-      configuracoes: row.configuracoes ? JSON.parse(row.configuracoes) : {},
-      ativo: Boolean(row.ativo)
+      ativa: Boolean(row.ativa)
     };
 
     res.json({
@@ -99,50 +103,23 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// GET /orbis/rotas/nome/:nome - Buscar rota por nome
-router.get('/nome/:nome', async (req, res) => {
+// GET /orbis/rotas/descricao/:descricao - Buscar rota por descrição
+router.get('/descricao/:descricao', async (req, res) => {
   try {
-    const { nome } = req.params;
-    const row = await getRow('SELECT * FROM rotas WHERE nome = ?', [nome]);
+    const { descricao } = req.params;
+    const rows = await getAllRows('SELECT * FROM rotas WHERE descricao LIKE ? ORDER BY nome', [`%${descricao}%`]);
 
-    if (!row) {
+    if (rows.length === 0) {
       return res.status(404).json({
         success: false,
-        error: 'Rota não encontrada'
+        error: 'Nenhuma rota encontrada'
       });
     }
-
-    const rota = {
-      ...row,
-      etapas: row.etapas ? JSON.parse(row.etapas) : [],
-      configuracoes: row.configuracoes ? JSON.parse(row.configuracoes) : {},
-      ativo: Boolean(row.ativo)
-    };
-
-    res.json({
-      success: true,
-      data: rota
-    });
-  } catch (error) {
-    console.error('Erro ao buscar rota:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Erro interno do servidor',
-      message: error.message
-    });
-  }
-});
-
-// GET /orbis/rotas/ativas - Listar apenas rotas ativas
-router.get('/ativas', async (req, res) => {
-  try {
-    const rows = await getAllRows('SELECT * FROM rotas WHERE ativo = 1 ORDER BY nome');
 
     const rotas = rows.map(row => ({
       ...row,
       etapas: row.etapas ? JSON.parse(row.etapas) : [],
-      configuracoes: row.configuracoes ? JSON.parse(row.configuracoes) : {},
-      ativo: Boolean(row.ativo)
+      ativa: Boolean(row.ativa)
     }));
 
     res.json({
@@ -150,7 +127,7 @@ router.get('/ativas', async (req, res) => {
       data: rotas
     });
   } catch (error) {
-    console.error('Erro ao listar rotas ativas:', error);
+    console.error('Erro ao buscar rotas por descrição:', error);
     res.status(500).json({
       success: false,
       error: 'Erro interno do servidor',
@@ -162,13 +139,20 @@ router.get('/ativas', async (req, res) => {
 // POST /orbis/rotas - Criar nova rota
 router.post('/', async (req, res) => {
   try {
-    const { nome, descricao, etapas, configuracoes, observacoes, ativo } = req.body;
+    const { 
+      nome, 
+      descricao, 
+      sequencia_centros, 
+      centro_prod, 
+      etapas, 
+      ativa = true 
+    } = req.body;
 
     // Validações
-    if (!nome) {
+    if (!nome || !sequencia_centros || !etapas) {
       return res.status(400).json({
         success: false,
-        error: 'Campo obrigatório: nome'
+        error: 'Campos obrigatórios: nome, sequencia_centros, etapas'
       });
     }
 
@@ -181,31 +165,19 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Validar estrutura das etapas
-    if (etapas && Array.isArray(etapas)) {
-      for (const etapa of etapas) {
-        if (!etapa.etapa_id || typeof etapa.ordem !== 'number') {
-          return res.status(400).json({
-            success: false,
-            error: 'Cada etapa deve ter etapa_id e ordem'
-          });
-        }
-      }
-    }
-
     const query = `
       INSERT INTO rotas 
-      (nome, descricao, etapas, configuracoes, observacoes, ativo, data_criacao)
-      VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+      (nome, descricao, sequencia_centros, centro_prod, etapas, ativa, data_criacao, data_modificacao)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
     `;
 
     const result = await runQuery(query, [
       nome,
       descricao || null,
-      etapas ? JSON.stringify(etapas) : null,
-      configuracoes ? JSON.stringify(configuracoes) : null,
-      observacoes || null,
-      ativo !== undefined ? (ativo ? 1 : 0) : 1
+      sequencia_centros,
+      centro_prod || null,
+      JSON.stringify(etapas),
+      ativa ? 1 : 0
     ]);
 
     // Buscar o registro criado
@@ -213,8 +185,7 @@ router.post('/', async (req, res) => {
     const rota = {
       ...newRecord,
       etapas: newRecord.etapas ? JSON.parse(newRecord.etapas) : [],
-      configuracoes: newRecord.configuracoes ? JSON.parse(newRecord.configuracoes) : {},
-      ativo: Boolean(newRecord.ativo)
+      ativa: Boolean(newRecord.ativa)
     };
 
     res.status(201).json({
@@ -235,7 +206,14 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { nome, descricao, etapas, configuracoes, observacoes, ativo } = req.body;
+    const { 
+      nome, 
+      descricao, 
+      sequencia_centros, 
+      centro_prod, 
+      etapas, 
+      ativa 
+    } = req.body;
 
     // Verificar se rota existe
     const existing = await getRow('SELECT * FROM rotas WHERE id = ?', [id]);
@@ -257,32 +235,20 @@ router.put('/:id', async (req, res) => {
       }
     }
 
-    // Validar estrutura das etapas
-    if (etapas && Array.isArray(etapas)) {
-      for (const etapa of etapas) {
-        if (!etapa.etapa_id || typeof etapa.ordem !== 'number') {
-          return res.status(400).json({
-            success: false,
-            error: 'Cada etapa deve ter etapa_id e ordem'
-          });
-        }
-      }
-    }
-
     const query = `
       UPDATE rotas 
-      SET nome = ?, descricao = ?, etapas = ?, configuracoes = ?, observacoes = ?, 
-          ativo = ?, data_modificacao = datetime('now')
+      SET nome = ?, descricao = ?, sequencia_centros = ?, centro_prod = ?, 
+          etapas = ?, ativa = ?, data_modificacao = datetime('now')
       WHERE id = ?
     `;
 
     await runQuery(query, [
       nome || existing.nome,
       descricao !== undefined ? descricao : existing.descricao,
-      etapas !== undefined ? (etapas ? JSON.stringify(etapas) : null) : existing.etapas,
-      configuracoes !== undefined ? (configuracoes ? JSON.stringify(configuracoes) : null) : existing.configuracoes,
-      observacoes !== undefined ? observacoes : existing.observacoes,
-      ativo !== undefined ? (ativo ? 1 : 0) : existing.ativo,
+      sequencia_centros || existing.sequencia_centros,
+      centro_prod !== undefined ? centro_prod : existing.centro_prod,
+      etapas !== undefined ? JSON.stringify(etapas) : existing.etapas,
+      ativa !== undefined ? (ativa ? 1 : 0) : existing.ativa,
       id
     ]);
 
@@ -291,8 +257,7 @@ router.put('/:id', async (req, res) => {
     const rota = {
       ...updatedRecord,
       etapas: updatedRecord.etapas ? JSON.parse(updatedRecord.etapas) : [],
-      configuracoes: updatedRecord.configuracoes ? JSON.parse(updatedRecord.configuracoes) : {},
-      ativo: Boolean(updatedRecord.ativo)
+      ativa: Boolean(updatedRecord.ativa)
     };
 
     res.json({
@@ -309,7 +274,75 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE /orbis/rotas/:id - Excluir rota
+// PATCH /orbis/rotas/:id/desativar - Desativar rota
+router.patch('/:id/desativar', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verificar se rota existe
+    const existing = await getRow('SELECT * FROM rotas WHERE id = ?', [id]);
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        error: 'Rota não encontrada'
+      });
+    }
+
+    await runQuery('UPDATE rotas SET ativa = 0, data_modificacao = datetime(\'now\') WHERE id = ?', [id]);
+
+    res.json({
+      success: true,
+      message: 'Rota desativada com sucesso',
+      data: {
+        id: parseInt(id),
+        ativa: false
+      }
+    });
+  } catch (error) {
+    console.error('Erro ao desativar rota:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor',
+      message: error.message
+    });
+  }
+});
+
+// PATCH /orbis/rotas/:id/ativar - Reativar rota
+router.patch('/:id/ativar', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verificar se rota existe
+    const existing = await getRow('SELECT * FROM rotas WHERE id = ?', [id]);
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        error: 'Rota não encontrada'
+      });
+    }
+
+    await runQuery('UPDATE rotas SET ativa = 1, data_modificacao = datetime(\'now\') WHERE id = ?', [id]);
+
+    res.json({
+      success: true,
+      message: 'Rota ativada com sucesso',
+      data: {
+        id: parseInt(id),
+        ativa: true
+      }
+    });
+  } catch (error) {
+    console.error('Erro ao ativar rota:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor',
+      message: error.message
+    });
+  }
+});
+
+// DELETE /orbis/rotas/:id - Excluir rota permanentemente
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;

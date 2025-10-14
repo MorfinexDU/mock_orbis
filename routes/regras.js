@@ -5,24 +5,17 @@ const { getAllRows, getRow, runQuery } = require('../database/connection');
 // GET /orbis/regras - Listar regras
 router.get('/', async (req, res) => {
   try {
-    const { page = 1, limit = 50, search, tipo, ativo } = req.query;
+    const { page = 1, limit = 50, search, ativo } = req.query;
     const offset = (page - 1) * limit;
 
     let query = 'SELECT * FROM regras_pos_calculo WHERE 1=1';
     let countQuery = 'SELECT COUNT(*) as total FROM regras_pos_calculo WHERE 1=1';
     let params = [];
 
-    // Filtros
     if (search) {
       query += ' AND (nome LIKE ? OR descricao LIKE ?)';
       countQuery += ' AND (nome LIKE ? OR descricao LIKE ?)';
       params.push(`%${search}%`, `%${search}%`);
-    }
-
-    if (tipo) {
-      query += ' AND tipo = ?';
-      countQuery += ' AND tipo = ?';
-      params.push(tipo);
     }
 
     if (ativo !== undefined) {
@@ -31,25 +24,19 @@ router.get('/', async (req, res) => {
       params.push(ativo === 'true' ? 1 : 0);
     }
 
-    // Ordenação e paginação
-    query += ' ORDER BY ordem, nome LIMIT ? OFFSET ?';
+    query += ' ORDER BY nome LIMIT ? OFFSET ?';
     params.push(parseInt(limit), parseInt(offset));
 
     const [rows, countResult] = await Promise.all([
       getAllRows(query, params),
-      getRow(countQuery, params.slice(0, -2)) // Remove limit e offset do count
+      getRow(countQuery, params.slice(0, -2))
     ]);
 
-    // Parse JSON fields
     const regras = rows.map(row => ({
       ...row,
-      condicoes: row.condicoes ? JSON.parse(row.condicoes) : {},
-      acoes: row.acoes ? JSON.parse(row.acoes) : {},
+      condicoes_multiplas: row.condicoes_multiplas ? JSON.parse(row.condicoes_multiplas) : [],
       ativo: Boolean(row.ativo)
     }));
-
-    const total = countResult.total;
-    const totalPages = Math.ceil(total / limit);
 
     res.json({
       success: true,
@@ -57,8 +44,8 @@ router.get('/', async (req, res) => {
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
-        total,
-        totalPages
+        total: countResult.total,
+        totalPages: Math.ceil(countResult.total / limit)
       }
     });
   } catch (error) {
@@ -86,8 +73,7 @@ router.get('/:id', async (req, res) => {
 
     const regra = {
       ...row,
-      condicoes: row.condicoes ? JSON.parse(row.condicoes) : {},
-      acoes: row.acoes ? JSON.parse(row.acoes) : {},
+      condicoes_multiplas: row.condicoes_multiplas ? JSON.parse(row.condicoes_multiplas) : [],
       ativo: Boolean(row.ativo)
     };
 
@@ -105,51 +91,31 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// GET /orbis/regras/tipo/:tipo - Buscar regras por tipo
-router.get('/tipo/:tipo', async (req, res) => {
+// GET /orbis/regras/nome/:nome - Buscar regra por nome
+router.get('/nome/:nome', async (req, res) => {
   try {
-    const { tipo } = req.params;
-    const rows = await getAllRows('SELECT * FROM regras_pos_calculo WHERE tipo = ? ORDER BY ordem, nome', [tipo]);
+    const { nome } = req.params;
+    const row = await getRow('SELECT * FROM regras_pos_calculo WHERE nome = ?', [nome]);
 
-    const regras = rows.map(row => ({
+    if (!row) {
+      return res.status(404).json({
+        success: false,
+        error: 'Regra não encontrada'
+      });
+    }
+
+    const regra = {
       ...row,
-      condicoes: row.condicoes ? JSON.parse(row.condicoes) : {},
-      acoes: row.acoes ? JSON.parse(row.acoes) : {},
+      condicoes_multiplas: row.condicoes_multiplas ? JSON.parse(row.condicoes_multiplas) : [],
       ativo: Boolean(row.ativo)
-    }));
+    };
 
     res.json({
       success: true,
-      data: regras
+      data: regra
     });
   } catch (error) {
-    console.error('Erro ao buscar regras por tipo:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Erro interno do servidor',
-      message: error.message
-    });
-  }
-});
-
-// GET /orbis/regras/ativas - Listar apenas regras ativas ordenadas por ordem
-router.get('/ativas', async (req, res) => {
-  try {
-    const rows = await getAllRows('SELECT * FROM regras_pos_calculo WHERE ativo = 1 ORDER BY ordem, nome');
-
-    const regras = rows.map(row => ({
-      ...row,
-      condicoes: row.condicoes ? JSON.parse(row.condicoes) : {},
-      acoes: row.acoes ? JSON.parse(row.acoes) : {},
-      ativo: Boolean(row.ativo)
-    }));
-
-    res.json({
-      success: true,
-      data: regras
-    });
-  } catch (error) {
-    console.error('Erro ao listar regras ativas:', error);
+    console.error('Erro ao buscar regra por nome:', error);
     res.status(500).json({
       success: false,
       error: 'Erro interno do servidor',
@@ -161,27 +127,15 @@ router.get('/ativas', async (req, res) => {
 // POST /orbis/regras - Criar nova regra
 router.post('/', async (req, res) => {
   try {
-    const { 
-      nome, 
-      descricao, 
-      tipo, 
-      condicoes, 
-      acoes, 
-      ordem, 
-      prioridade, 
-      observacoes, 
-      ativo 
-    } = req.body;
+    const { nome, descricao, tipo_condicao, condicao_valor, condicoes_multiplas, operador_logico, acao, acao_valor, ativo } = req.body;
 
-    // Validações
-    if (!nome || !tipo || !condicoes || !acoes) {
+    if (!nome || !tipo_condicao || !acao || !acao_valor) {
       return res.status(400).json({
         success: false,
-        error: 'Campos obrigatórios: nome, tipo, condicoes, acoes'
+        error: 'Campos obrigatórios: nome, tipo_condicao, acao, acao_valor'
       });
     }
 
-    // Verificar se nome já existe
     const existing = await getRow('SELECT id FROM regras_pos_calculo WHERE nome = ?', [nome]);
     if (existing) {
       return res.status(409).json({
@@ -192,28 +146,26 @@ router.post('/', async (req, res) => {
 
     const query = `
       INSERT INTO regras_pos_calculo 
-      (nome, descricao, tipo, condicoes, acoes, ordem, prioridade, observacoes, ativo, data_criacao)
+      (nome, descricao, tipo_condicao, condicao_valor, condicoes_multiplas, operador_logico, acao, acao_valor, ativo, data_criacao)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     `;
 
     const result = await runQuery(query, [
       nome,
       descricao || null,
-      tipo,
-      JSON.stringify(condicoes),
-      JSON.stringify(acoes),
-      ordem || null,
-      prioridade || 1,
-      observacoes || null,
+      tipo_condicao,
+      condicao_valor || null,
+      condicoes_multiplas ? JSON.stringify(condicoes_multiplas) : null,
+      operador_logico || null,
+      acao,
+      acao_valor,
       ativo !== undefined ? (ativo ? 1 : 0) : 1
     ]);
 
-    // Buscar o registro criado
     const newRecord = await getRow('SELECT * FROM regras_pos_calculo WHERE id = ?', [result.id]);
     const regra = {
       ...newRecord,
-      condicoes: newRecord.condicoes ? JSON.parse(newRecord.condicoes) : {},
-      acoes: newRecord.acoes ? JSON.parse(newRecord.acoes) : {},
+      condicoes_multiplas: newRecord.condicoes_multiplas ? JSON.parse(newRecord.condicoes_multiplas) : [],
       ativo: Boolean(newRecord.ativo)
     };
 
@@ -235,19 +187,8 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { 
-      nome, 
-      descricao, 
-      tipo, 
-      condicoes, 
-      acoes, 
-      ordem, 
-      prioridade, 
-      observacoes, 
-      ativo 
-    } = req.body;
+    const { nome, descricao, tipo_condicao, condicao_valor, condicoes_multiplas, operador_logico, acao, acao_valor, ativo } = req.body;
 
-    // Verificar se regra existe
     const existing = await getRow('SELECT * FROM regras_pos_calculo WHERE id = ?', [id]);
     if (!existing) {
       return res.status(404).json({
@@ -256,7 +197,6 @@ router.put('/:id', async (req, res) => {
       });
     }
 
-    // Verificar se nome já existe (exceto o próprio registro)
     if (nome && nome !== existing.nome) {
       const nameExists = await getRow('SELECT id FROM regras_pos_calculo WHERE nome = ? AND id != ?', [nome, id]);
       if (nameExists) {
@@ -269,30 +209,28 @@ router.put('/:id', async (req, res) => {
 
     const query = `
       UPDATE regras_pos_calculo 
-      SET nome = ?, descricao = ?, tipo = ?, condicoes = ?, acoes = ?, 
-          ordem = ?, prioridade = ?, observacoes = ?, ativo = ?, data_modificacao = datetime('now')
+      SET nome = ?, descricao = ?, tipo_condicao = ?, condicao_valor = ?, condicoes_multiplas = ?, 
+          operador_logico = ?, acao = ?, acao_valor = ?, ativo = ?, data_modificacao = datetime('now')
       WHERE id = ?
     `;
 
     await runQuery(query, [
       nome || existing.nome,
       descricao !== undefined ? descricao : existing.descricao,
-      tipo || existing.tipo,
-      condicoes !== undefined ? JSON.stringify(condicoes) : existing.condicoes,
-      acoes !== undefined ? JSON.stringify(acoes) : existing.acoes,
-      ordem !== undefined ? ordem : existing.ordem,
-      prioridade !== undefined ? prioridade : existing.prioridade,
-      observacoes !== undefined ? observacoes : existing.observacoes,
+      tipo_condicao || existing.tipo_condicao,
+      condicao_valor !== undefined ? condicao_valor : existing.condicao_valor,
+      condicoes_multiplas !== undefined ? JSON.stringify(condicoes_multiplas) : existing.condicoes_multiplas,
+      operador_logico !== undefined ? operador_logico : existing.operador_logico,
+      acao || existing.acao,
+      acao_valor || existing.acao_valor,
       ativo !== undefined ? (ativo ? 1 : 0) : existing.ativo,
       id
     ]);
 
-    // Buscar o registro atualizado
     const updatedRecord = await getRow('SELECT * FROM regras_pos_calculo WHERE id = ?', [id]);
     const regra = {
       ...updatedRecord,
-      condicoes: updatedRecord.condicoes ? JSON.parse(updatedRecord.condicoes) : {},
-      acoes: updatedRecord.acoes ? JSON.parse(updatedRecord.acoes) : {},
+      condicoes_multiplas: updatedRecord.condicoes_multiplas ? JSON.parse(updatedRecord.condicoes_multiplas) : [],
       ativo: Boolean(updatedRecord.ativo)
     };
 
@@ -310,12 +248,71 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// PATCH /orbis/regras/:id/desativar - Desativar regra
+router.patch('/:id/desativar', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const existing = await getRow('SELECT * FROM regras_pos_calculo WHERE id = ?', [id]);
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        error: 'Regra não encontrada'
+      });
+    }
+
+    await runQuery("UPDATE regras_pos_calculo SET ativo = 0, data_modificacao = datetime('now') WHERE id = ?", [id]);
+
+    res.json({
+      success: true,
+      message: 'Regra desativada com sucesso',
+      data: { id: parseInt(id), ativo: false }
+    });
+  } catch (error) {
+    console.error('Erro ao desativar regra:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor',
+      message: error.message
+    });
+  }
+});
+
+// PATCH /orbis/regras/:id/ativar - Ativar regra
+router.patch('/:id/ativar', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const existing = await getRow('SELECT * FROM regras_pos_calculo WHERE id = ?', [id]);
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        error: 'Regra não encontrada'
+      });
+    }
+
+    await runQuery("UPDATE regras_pos_calculo SET ativo = 1, data_modificacao = datetime('now') WHERE id = ?", [id]);
+
+    res.json({
+      success: true,
+      message: 'Regra ativada com sucesso',
+      data: { id: parseInt(id), ativo: true }
+    });
+  } catch (error) {
+    console.error('Erro ao ativar regra:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor',
+      message: error.message
+    });
+  }
+});
+
 // DELETE /orbis/regras/:id - Excluir regra
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Verificar se regra existe
     const existing = await getRow('SELECT * FROM regras_pos_calculo WHERE id = ?', [id]);
     if (!existing) {
       return res.status(404).json({

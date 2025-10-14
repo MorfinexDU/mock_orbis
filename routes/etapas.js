@@ -5,7 +5,7 @@ const { getAllRows, getRow, runQuery } = require('../database/connection');
 // GET /orbis/etapas - Listar etapas
 router.get('/', async (req, res) => {
   try {
-    const { page = 1, limit = 50, search, categoria } = req.query;
+    const { page = 1, limit = 50, search, ativa, centro } = req.query;
     const offset = (page - 1) * limit;
 
     let query = 'SELECT * FROM etapas WHERE 1=1';
@@ -19,26 +19,33 @@ router.get('/', async (req, res) => {
       params.push(`%${search}%`, `%${search}%`);
     }
 
-    if (categoria) {
-      query += ' AND categoria = ?';
-      countQuery += ' AND categoria = ?';
-      params.push(categoria);
+    if (ativa !== undefined) {
+      query += ' AND ativa = ?';
+      countQuery += ' AND ativa = ?';
+      params.push(ativa === 'true' ? 1 : 0);
+    }
+
+    if (centro) {
+      query += ' AND centros LIKE ?';
+      countQuery += ' AND centros LIKE ?';
+      params.push(`%${centro}%`);
     }
 
     // Ordenação e paginação
-    query += ' ORDER BY categoria, ordem, nome LIMIT ? OFFSET ?';
+    query += ' ORDER BY nome LIMIT ? OFFSET ?';
     params.push(parseInt(limit), parseInt(offset));
 
     const [rows, countResult] = await Promise.all([
       getAllRows(query, params),
-      getRow(countQuery, params.slice(0, -2)) // Remove limit e offset do count
+      getRow(countQuery, params.slice(0, -2))
     ]);
 
     // Parse JSON fields
     const etapas = rows.map(row => ({
       ...row,
+      centros_trabalho: row.centros_trabalho ? JSON.parse(row.centros_trabalho) : [],
       parametros_necessarios: row.parametros_necessarios ? JSON.parse(row.parametros_necessarios) : [],
-      configuracoes: row.configuracoes ? JSON.parse(row.configuracoes) : {}
+      ativa: Boolean(row.ativa)
     }));
 
     const total = countResult.total;
@@ -79,8 +86,9 @@ router.get('/:id', async (req, res) => {
 
     const etapa = {
       ...row,
+      centros_trabalho: row.centros_trabalho ? JSON.parse(row.centros_trabalho) : [],
       parametros_necessarios: row.parametros_necessarios ? JSON.parse(row.parametros_necessarios) : [],
-      configuracoes: row.configuracoes ? JSON.parse(row.configuracoes) : {}
+      ativa: Boolean(row.ativa)
     };
 
     res.json({
@@ -97,24 +105,40 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// GET /orbis/etapas/categoria/:categoria - Buscar etapas por categoria
-router.get('/categoria/:categoria', async (req, res) => {
+// GET /orbis/etapas?ids=1,2,3 - Buscar múltiplas etapas por IDs
+router.get('/', async (req, res) => {
   try {
-    const { categoria } = req.params;
-    const rows = await getAllRows('SELECT * FROM etapas WHERE categoria = ? ORDER BY ordem, nome', [categoria]);
+    const { ids } = req.query;
+    
+    if (ids) {
+      const idArray = ids.split(',').map(id => parseInt(id.trim()));
+      const placeholders = idArray.map(() => '?').join(',');
+      const rows = await getAllRows(`SELECT * FROM etapas WHERE id IN (${placeholders})`, idArray);
 
-    const etapas = rows.map(row => ({
-      ...row,
-      parametros_necessarios: row.parametros_necessarios ? JSON.parse(row.parametros_necessarios) : [],
-      configuracoes: row.configuracoes ? JSON.parse(row.configuracoes) : {}
-    }));
+      if (rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'Etapas não encontradas'
+        });
+      }
 
-    res.json({
-      success: true,
-      data: etapas
-    });
+      const etapas = rows.map(row => ({
+        ...row,
+        centros_trabalho: row.centros_trabalho ? JSON.parse(row.centros_trabalho) : [],
+        parametros_necessarios: row.parametros_necessarios ? JSON.parse(row.parametros_necessarios) : [],
+        ativa: Boolean(row.ativa)
+      }));
+
+      return res.json({
+        success: true,
+        data: etapas
+      });
+    }
+
+    // Continue with regular listing logic if no ids parameter
+    // ... (rest of the listing logic would be here)
   } catch (error) {
-    console.error('Erro ao buscar etapas por categoria:', error);
+    console.error('Erro ao buscar etapas:', error);
     res.status(500).json({
       success: false,
       error: 'Erro interno do servidor',
@@ -129,54 +153,51 @@ router.post('/', async (req, res) => {
     const { 
       nome, 
       descricao, 
-      categoria, 
-      ordem, 
-      tempo_estimado_minutos, 
+      centros, 
+      centros_trabalho, 
       parametros_necessarios, 
-      configuracoes, 
-      observacoes 
+      ativa = true 
     } = req.body;
 
     // Validações
-    if (!nome || !categoria) {
+    if (!nome || !centros || !centros_trabalho || !parametros_necessarios) {
       return res.status(400).json({
         success: false,
-        error: 'Campos obrigatórios: nome, categoria'
+        error: 'Campos obrigatórios: nome, centros, centros_trabalho, parametros_necessarios'
       });
     }
 
-    // Verificar se nome já existe na categoria
-    const existing = await getRow('SELECT id FROM etapas WHERE nome = ? AND categoria = ?', [nome, categoria]);
+    // Verificar se nome já existe
+    const existing = await getRow('SELECT id FROM etapas WHERE nome = ?', [nome]);
     if (existing) {
       return res.status(409).json({
         success: false,
-        error: 'Já existe uma etapa com este nome nesta categoria'
+        error: 'Já existe uma etapa com este nome'
       });
     }
 
     const query = `
       INSERT INTO etapas 
-      (nome, descricao, categoria, ordem, tempo_estimado_minutos, parametros_necessarios, configuracoes, observacoes, data_criacao)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      (nome, descricao, centros, centros_trabalho, parametros_necessarios, ativa, data_criacao, data_modificacao)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
     `;
 
     const result = await runQuery(query, [
       nome,
       descricao || null,
-      categoria,
-      ordem || null,
-      tempo_estimado_minutos || null,
-      parametros_necessarios ? JSON.stringify(parametros_necessarios) : null,
-      configuracoes ? JSON.stringify(configuracoes) : null,
-      observacoes || null
+      centros,
+      JSON.stringify(centros_trabalho),
+      JSON.stringify(parametros_necessarios),
+      ativa ? 1 : 0
     ]);
 
     // Buscar o registro criado
     const newRecord = await getRow('SELECT * FROM etapas WHERE id = ?', [result.id]);
     const etapa = {
       ...newRecord,
+      centros_trabalho: newRecord.centros_trabalho ? JSON.parse(newRecord.centros_trabalho) : [],
       parametros_necessarios: newRecord.parametros_necessarios ? JSON.parse(newRecord.parametros_necessarios) : [],
-      configuracoes: newRecord.configuracoes ? JSON.parse(newRecord.configuracoes) : {}
+      ativa: Boolean(newRecord.ativa)
     };
 
     res.status(201).json({
@@ -200,12 +221,10 @@ router.put('/:id', async (req, res) => {
     const { 
       nome, 
       descricao, 
-      categoria, 
-      ordem, 
-      tempo_estimado_minutos, 
+      centros, 
+      centros_trabalho, 
       parametros_necessarios, 
-      configuracoes, 
-      observacoes 
+      ativa 
     } = req.body;
 
     // Verificar se etapa existe
@@ -217,33 +236,31 @@ router.put('/:id', async (req, res) => {
       });
     }
 
-    // Verificar se nome já existe na categoria (exceto o próprio registro)
-    if (nome && categoria && (nome !== existing.nome || categoria !== existing.categoria)) {
-      const nameExists = await getRow('SELECT id FROM etapas WHERE nome = ? AND categoria = ? AND id != ?', [nome, categoria, id]);
+    // Verificar se nome já existe (exceto o próprio registro)
+    if (nome && nome !== existing.nome) {
+      const nameExists = await getRow('SELECT id FROM etapas WHERE nome = ? AND id != ?', [nome, id]);
       if (nameExists) {
         return res.status(409).json({
           success: false,
-          error: 'Já existe uma etapa com este nome nesta categoria'
+          error: 'Já existe uma etapa com este nome'
         });
       }
     }
 
     const query = `
       UPDATE etapas 
-      SET nome = ?, descricao = ?, categoria = ?, ordem = ?, tempo_estimado_minutos = ?, 
-          parametros_necessarios = ?, configuracoes = ?, observacoes = ?, data_modificacao = datetime('now')
+      SET nome = ?, descricao = ?, centros = ?, centros_trabalho = ?, 
+          parametros_necessarios = ?, ativa = ?, data_modificacao = datetime('now')
       WHERE id = ?
     `;
 
     await runQuery(query, [
       nome || existing.nome,
       descricao !== undefined ? descricao : existing.descricao,
-      categoria || existing.categoria,
-      ordem !== undefined ? ordem : existing.ordem,
-      tempo_estimado_minutos !== undefined ? tempo_estimado_minutos : existing.tempo_estimado_minutos,
-      parametros_necessarios !== undefined ? (parametros_necessarios ? JSON.stringify(parametros_necessarios) : null) : existing.parametros_necessarios,
-      configuracoes !== undefined ? (configuracoes ? JSON.stringify(configuracoes) : null) : existing.configuracoes,
-      observacoes !== undefined ? observacoes : existing.observacoes,
+      centros || existing.centros,
+      centros_trabalho !== undefined ? JSON.stringify(centros_trabalho) : existing.centros_trabalho,
+      parametros_necessarios !== undefined ? JSON.stringify(parametros_necessarios) : existing.parametros_necessarios,
+      ativa !== undefined ? (ativa ? 1 : 0) : existing.ativa,
       id
     ]);
 
@@ -251,8 +268,9 @@ router.put('/:id', async (req, res) => {
     const updatedRecord = await getRow('SELECT * FROM etapas WHERE id = ?', [id]);
     const etapa = {
       ...updatedRecord,
+      centros_trabalho: updatedRecord.centros_trabalho ? JSON.parse(updatedRecord.centros_trabalho) : [],
       parametros_necessarios: updatedRecord.parametros_necessarios ? JSON.parse(updatedRecord.parametros_necessarios) : [],
-      configuracoes: updatedRecord.configuracoes ? JSON.parse(updatedRecord.configuracoes) : {}
+      ativa: Boolean(updatedRecord.ativa)
     };
 
     res.json({
@@ -269,7 +287,75 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE /orbis/etapas/:id - Excluir etapa
+// PATCH /orbis/etapas/:id/desativar - Desativar etapa
+router.patch('/:id/desativar', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verificar se etapa existe
+    const existing = await getRow('SELECT * FROM etapas WHERE id = ?', [id]);
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        error: 'Etapa não encontrada'
+      });
+    }
+
+    await runQuery('UPDATE etapas SET ativa = 0, data_modificacao = datetime(\'now\') WHERE id = ?', [id]);
+
+    res.json({
+      success: true,
+      message: 'Etapa desativada com sucesso',
+      data: {
+        id: parseInt(id),
+        ativa: false
+      }
+    });
+  } catch (error) {
+    console.error('Erro ao desativar etapa:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor',
+      message: error.message
+    });
+  }
+});
+
+// PATCH /orbis/etapas/:id/ativar - Reativar etapa
+router.patch('/:id/ativar', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verificar se etapa existe
+    const existing = await getRow('SELECT * FROM etapas WHERE id = ?', [id]);
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        error: 'Etapa não encontrada'
+      });
+    }
+
+    await runQuery('UPDATE etapas SET ativa = 1, data_modificacao = datetime(\'now\') WHERE id = ?', [id]);
+
+    res.json({
+      success: true,
+      message: 'Etapa ativada com sucesso',
+      data: {
+        id: parseInt(id),
+        ativa: true
+      }
+    });
+  } catch (error) {
+    console.error('Erro ao ativar etapa:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor',
+      message: error.message
+    });
+  }
+});
+
+// DELETE /orbis/etapas/:id - Excluir etapa permanentemente
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;

@@ -57,216 +57,250 @@ async function seedDatabase() {
     // Dados para etapas
     const etapas = [
       {
-        nome: 'Preparação da Máquina',
-        categoria: 'Setup',
-        ordem: 1,
-        tempo_estimado_minutos: 30,
-        parametros_necessarios: JSON.stringify(['temperatura_operacao', 'pressao_hidraulica']),
-        configuracoes: JSON.stringify({ verificar_niveis: true, calibrar_sensores: true })
+        nome: 'CORTE LASER',
+        descricao: 'Etapa de corte laser',
+        centros: 'MP10',
+        centros_trabalho: JSON.stringify(['MA303', 'MA301', 'DE103']),
+        parametros_necessarios: JSON.stringify([
+          'espessura_chapa',
+          'material',
+          'perimetro',
+          'peso_peca',
+          'qtd_recortes_laserchapa'
+        ]),
+        ativa: 1
       },
       {
-        nome: 'Corte Primário',
-        categoria: 'Produção',
-        ordem: 1,
-        tempo_estimado_minutos: 15,
-        parametros_necessarios: JSON.stringify(['velocidade_corte', 'tipo_material', 'refrigeracao_ativa']),
-        configuracoes: JSON.stringify({ tolerancia_dimensional: 0.1, acabamento_superficial: 'Ra 1.6' })
+        nome: 'DESTAQUE',
+        descricao: 'Etapa de destaque das peças',
+        centros: 'MP10',
+        centros_trabalho: JSON.stringify(['DE101', 'DE102']),
+        parametros_necessarios: JSON.stringify([
+          'material',
+          'espessura_chapa',
+          'qtd_pecas'
+        ]),
+        ativa: 1
       },
       {
-        nome: 'Inspeção Dimensional',
-        categoria: 'Qualidade',
-        ordem: 1,
-        tempo_estimado_minutos: 10,
-        parametros_necessarios: JSON.stringify([]),
-        configuracoes: JSON.stringify({ pontos_medicao: 5, instrumento: 'Paquímetro digital' })
+        nome: 'DOBRADEIRA',
+        descricao: 'Etapa de dobra das peças',
+        centros: 'MP20',
+        centros_trabalho: JSON.stringify(['DB201', 'DB202', 'DB203']),
+        parametros_necessarios: JSON.stringify([
+          'material',
+          'espessura_chapa',
+          'angulo_dobra',
+          'comprimento_dobra'
+        ]),
+        ativa: 1
       },
       {
-        nome: 'Limpeza Final',
-        categoria: 'Acabamento',
-        ordem: 1,
-        tempo_estimado_minutos: 5,
-        parametros_necessarios: JSON.stringify([]),
-        configuracoes: JSON.stringify({ metodo_limpeza: 'Ar comprimido', verificar_rebarbas: true })
+        nome: 'MONTAGEM',
+        descricao: 'Etapa de montagem final',
+        centros: 'MP30',
+        centros_trabalho: JSON.stringify(['MT301', 'MT302']),
+        parametros_necessarios: JSON.stringify([
+          'qtd_componentes',
+          'tipo_fixacao',
+          'tempo_montagem'
+        ]),
+        ativa: 1
       }
     ];
 
     for (const etapa of etapas) {
       await runQuery(`
         INSERT OR IGNORE INTO etapas 
-        (nome, categoria, ordem, tempo_estimado_minutos, parametros_necessarios, configuracoes, data_criacao)
+        (nome, descricao, centros, centros_trabalho, parametros_necessarios, ativa, data_criacao)
         VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-      `, [etapa.nome, etapa.categoria, etapa.ordem, etapa.tempo_estimado_minutos, etapa.parametros_necessarios, etapa.configuracoes]);
+      `, [etapa.nome, etapa.descricao, etapa.centros, etapa.centros_trabalho, etapa.parametros_necessarios, etapa.ativa]);
     }
 
     // Dados para rotas
     const rotas = [
       {
-        nome: 'Processo Padrão de Usinagem',
-        descricao: 'Rota padrão para peças usinadas simples',
-        etapas: JSON.stringify([
-          { etapa_id: 1, ordem: 1, parametros_customizados: {} },
-          { etapa_id: 2, ordem: 2, parametros_customizados: {} },
-          { etapa_id: 3, ordem: 3, parametros_customizados: {} },
-          { etapa_id: 4, ordem: 4, parametros_customizados: {} }
-        ]),
-        configuracoes: JSON.stringify({ tempo_total_estimado: 60, nivel_complexidade: 'Básico' }),
-        ativo: 1
+        nome: 'CORTE LASER -> DOBRA -> MONTAGEM',
+        descricao: 'Rota para peças cortadas em laser com dobra e montagem',
+        sequencia_centros: 'MA303,DB201,MT301',
+        centro_prod: 'MP10',
+        etapas: JSON.stringify([1, 3, 4]),
+        ativa: 1
       },
       {
-        nome: 'Processo Expresso',
-        descricao: 'Rota rápida para produção urgente',
-        etapas: JSON.stringify([
-          { etapa_id: 1, ordem: 1, parametros_customizados: { tempo_estimado_minutos: 15 } },
-          { etapa_id: 2, ordem: 2, parametros_customizados: { velocidade_corte: 400 } }
-        ]),
-        configuracoes: JSON.stringify({ tempo_total_estimado: 30, nivel_complexidade: 'Rápido' }),
-        ativo: 1
+        nome: 'CORTE LASER -> DESTAQUE',
+        descricao: 'Rota simples para peças que precisam apenas de corte e destaque',
+        sequencia_centros: 'MA303,DE101',
+        centro_prod: 'MP10',
+        etapas: JSON.stringify([1, 2]),
+        ativa: 1
+      },
+      {
+        nome: 'PROCESSO COMPLETO',
+        descricao: 'Rota completa com todas as etapas de produção',
+        sequencia_centros: 'MA303,DE101,DB201,MT301',
+        centro_prod: 'MP10',
+        etapas: JSON.stringify([1, 2, 3, 4]),
+        ativa: 1
       }
     ];
 
     for (const rota of rotas) {
       await runQuery(`
         INSERT OR IGNORE INTO rotas 
-        (nome, descricao, etapas, configuracoes, ativo, data_criacao)
-        VALUES (?, ?, ?, ?, ?, datetime('now'))
-      `, [rota.nome, rota.descricao, rota.etapas, rota.configuracoes, rota.ativo]);
+        (nome, descricao, sequencia_centros, centro_prod, etapas, ativa, data_criacao)
+        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+      `, [rota.nome, rota.descricao, rota.sequencia_centros, rota.centro_prod, rota.etapas, rota.ativa]);
     }
 
-    // Dados para operacoes
+    // Dados para operacoes - Seguindo novo padrão SQL Server
     const operacoes = [
       {
-        nome: 'Torneamento Cilíndrico',
-        categoria: 'Usinagem',
-        tipo_maquina: 'Torno CNC',
-        tipo_operacao: 'Torneamento',
-        codigo_sap: 'OP001',
-        tempo_setup_min: 45,
-        tempo_processamento_min: 12,
-        custo_hora_operacao: 120.50,
-        taxa_refugo_padrao: 0.02,
-        condicoes_aplicacao: JSON.stringify({
-          material_compativel: ['Aço 1020', 'Aço 4140'],
-          diametro_max: 200,
-          comprimento_max: 500
-        }),
-        configuracoes_avancadas: JSON.stringify({
-          rpm_recomendado: 1200,
-          avanco_mm_rev: 0.3,
-          profundidade_corte: 2.0
-        }),
-        parametros_processo: JSON.stringify(['velocidade_corte', 'tipo_material', 'refrigeracao_ativa'])
+        sequencia: '1',
+        centro_producao: 'MP10',
+        centro_trabalho: 'MA303',
+        chave_controle: 'ZP11',
+        chave_modelo: '174',
+        descricao: 'Corte laser chapa',
+        tempo_homem: 0.006,
+        unidade_tempo_homem: 'MIN',
+        tempo_maquina: 0.006,
+        unidade_tempo_maquina: 'MIN',
+        tempo_preparacao: 3,
+        unidade_tempo_preparacao: 'MIN',
+        formula_tempo_homem: 'perimetro*COEF(corte_laser)+0.014',
+        formula_tempo_maquina: 'perimetro*COEF(corte_laser)+0.014',
+        formula_tempo_preparacao: 'tempo_base * espessura_chapa',
+        condicoes_aplicacao: JSON.stringify([
+          { parametro: 'perimetro', operador: '>', valor: '0' },
+          { parametro: 'espessura_chapa', operador: '>', valor: '0' }
+        ]),
+        explicacao_formula_homem: 'Tempo baseado no perímetro e coeficiente de material',
+        explicacao_formula_maquina: 'Tempo baseado no perímetro e coeficiente de material',
+        explicacao_formula_preparacao: 'Tempo de setup proporcional à espessura',
+        regras_pos_calculo: JSON.stringify([
+          { idRegraConfigurada: 2, nomeRegraConfigurada: 'ALTERAR_ULTIMA_OP', id_regra_configurada: 2, nome_regra: 'ALTERAR_ULTIMA_OP' }
+        ]),
+        validar_rota: 1,
+        ativo: 1
       },
       {
-        nome: 'Fresamento de Face',
-        categoria: 'Usinagem',
-        tipo_maquina: 'Centro de Usinagem',
-        tipo_operacao: 'Fresamento',
-        codigo_sap: 'OP002',
-        tempo_setup_min: 30,
-        tempo_processamento_min: 8,
-        custo_hora_operacao: 150.00,
-        taxa_refugo_padrao: 0.015,
-        condicoes_aplicacao: JSON.stringify({
-          material_compativel: ['Aço 1020', 'Alumínio 6061'],
-          area_max: 400,
-          espessura_max: 50
-        }),
-        configuracoes_avancadas: JSON.stringify({
-          rpm_recomendado: 2500,
-          avanco_mm_min: 800,
-          profundidade_corte: 1.5
-        }),
-        parametros_processo: JSON.stringify(['velocidade_corte', 'tipo_material'])
+        sequencia: '2',
+        centro_producao: 'MP10',
+        centro_trabalho: 'DE101',
+        chave_controle: 'ZP12',
+        chave_modelo: '175',
+        descricao: 'Destaque de peças',
+        tempo_homem: 0.5,
+        unidade_tempo_homem: 'MIN',
+        tempo_maquina: 0,
+        unidade_tempo_maquina: 'MIN',
+        tempo_preparacao: 1,
+        unidade_tempo_preparacao: 'MIN',
+        formula_tempo_homem: 'tempo_base * qtd_pecas',
+        formula_tempo_maquina: 'tempo_base',
+        formula_tempo_preparacao: 'tempo_base',
+        condicoes_aplicacao: JSON.stringify([
+          { parametro: 'qtd_pecas', operador: '>', valor: '0' }
+        ]),
+        explicacao_formula_homem: 'Tempo proporcional à quantidade de peças',
+        explicacao_formula_maquina: 'Sem tempo de máquina',
+        explicacao_formula_preparacao: 'Setup fixo',
+        regras_pos_calculo: JSON.stringify([]),
+        validar_rota: 1,
+        ativo: 1
       }
     ];
 
     for (const operacao of operacoes) {
       await runQuery(`
         INSERT OR IGNORE INTO operacoes 
-        (nome, categoria, tipo_maquina, tipo_operacao, codigo_sap, tempo_setup_min, 
-         tempo_processamento_min, custo_hora_operacao, taxa_refugo_padrao, 
-         condicoes_aplicacao, configuracoes_avancadas, parametros_processo, data_criacao)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        (sequencia, centro_producao, centro_trabalho, chave_controle, chave_modelo, descricao,
+         tempo_homem, unidade_tempo_homem, tempo_maquina, unidade_tempo_maquina,
+         tempo_preparacao, unidade_tempo_preparacao, formula_tempo_homem, formula_tempo_maquina,
+         formula_tempo_preparacao, condicoes_aplicacao, explicacao_formula_homem,
+         explicacao_formula_maquina, explicacao_formula_preparacao, regras_pos_calculo,
+         validar_rota, ativo, data_criacao)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
       `, [
-        operacao.nome, operacao.categoria, operacao.tipo_maquina, operacao.tipo_operacao,
-        operacao.codigo_sap, operacao.tempo_setup_min, operacao.tempo_processamento_min,
-        operacao.custo_hora_operacao, operacao.taxa_refugo_padrao, operacao.condicoes_aplicacao,
-        operacao.configuracoes_avancadas, operacao.parametros_processo
+        operacao.sequencia, operacao.centro_producao, operacao.centro_trabalho,
+        operacao.chave_controle, operacao.chave_modelo, operacao.descricao,
+        operacao.tempo_homem, operacao.unidade_tempo_homem, operacao.tempo_maquina,
+        operacao.unidade_tempo_maquina, operacao.tempo_preparacao, operacao.unidade_tempo_preparacao,
+        operacao.formula_tempo_homem, operacao.formula_tempo_maquina, operacao.formula_tempo_preparacao,
+        operacao.condicoes_aplicacao, operacao.explicacao_formula_homem,
+        operacao.explicacao_formula_maquina, operacao.explicacao_formula_preparacao,
+        operacao.regras_pos_calculo, operacao.validar_rota, operacao.ativo
       ]);
     }
 
-    // Dados para tabelas_coeficientes
+    // Dados para tabelas_coeficientes - Seguindo novo padrão SQL Server
     const coeficientes = [
       {
-        nome: 'Fator Dificuldade Material',
-        categoria: 'Material',
-        tipo: 'tabela',
-        descricao: 'Coeficientes de dificuldade por tipo de material',
-        valores: JSON.stringify({
-          'Aço 1020': 1.0,
-          'Aço 4140': 1.3,
-          'Alumínio 6061': 0.7,
-          'Latão': 0.8
-        }),
-        unidade: 'fator',
-        tabela_sap: 'MAT_COEF_001',
-        ativo: 1
+        nome: 'corte_laser',
+        descricao: 'Tabela para coeficientes de corte laser chapa',
+        parametros_condicao: JSON.stringify([
+          { nome: 'material', operador: '==', tipo: 'texto' },
+          { nome: 'espessura_chapa', operador: '==', tipo: 'numero_decimal' }
+        ]),
+        dados_coeficientes: JSON.stringify([
+          { material: 'ALUZINC', espessura_chapa: '0.35', coeficiente: '0.00011675840000000' },
+          { material: 'ALUZINC', espessura_chapa: '0.75', coeficiente: '0.00004086540000000' },
+          { material: 'AÇO GALVANIZADO', espessura_chapa: '0.55', coeficiente: '0.00003669830000000' }
+        ]),
+        tabela_sap: 'Z_COEF_LASER_001',
+        ativa: 1
       },
       {
-        nome: 'Fator Complexidade Geométrica',
-        categoria: 'Geometria',
-        tipo: 'escalonado',
-        descricao: 'Coeficientes baseados na complexidade da peça',
-        valores: JSON.stringify({
-          'Simples': 1.0,
-          'Média': 1.4,
-          'Complexa': 1.8,
-          'Muito Complexa': 2.5
-        }),
-        unidade: 'fator',
-        tabela_sap: 'GEO_COEF_001',
-        ativo: 1
+        nome: 'dobra_chapa',
+        descricao: 'Tabela para coeficientes de dobra de chapa',
+        parametros_condicao: JSON.stringify([
+          { nome: 'material', operador: '==', tipo: 'texto' },
+          { nome: 'espessura_chapa', operador: 'ENTRE', tipo: 'numero_decimal' }
+        ]),
+        dados_coeficientes: JSON.stringify([
+          { material: 'AÇO CARBONO', espessura_chapa: '0.5-2.0', coeficiente: '1.2' },
+          { material: 'AÇO INOX', espessura_chapa: '0.5-2.0', coeficiente: '1.5' },
+          { material: 'ALUMÍNIO', espessura_chapa: '0.5-3.0', coeficiente: '0.8' }
+        ]),
+        tabela_sap: 'Z_COEF_DOBRA_001',
+        ativa: 1
       }
     ];
 
     for (const coef of coeficientes) {
       await runQuery(`
         INSERT OR IGNORE INTO tabelas_coeficientes 
-        (nome, categoria, tipo, descricao, valores, unidade, tabela_sap, ativo, data_criacao)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-      `, [coef.nome, coef.categoria, coef.tipo, coef.descricao, coef.valores, coef.unidade, coef.tabela_sap, coef.ativo]);
+        (nome, descricao, parametros_condicao, dados_coeficientes, tabela_sap, ativa, data_criacao)
+        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+      `, [coef.nome, coef.descricao, coef.parametros_condicao, coef.dados_coeficientes, coef.tabela_sap, coef.ativa]);
     }
 
-    // Dados para regras_pos_calculo
+    // Dados para regras_pos_calculo - Seguindo novo padrão SQL Server
     const regras = [
       {
-        nome: 'Ajuste por Material Difícil',
-        tipo: 'condicional',
-        condicoes: JSON.stringify({
-          material: ['Aço 4140'],
-          operacao_tipo: 'Torneamento'
-        }),
-        acoes: JSON.stringify({
-          multiplicar_tempo: 1.3,
-          adicionar_setup: 15,
-          observacao: 'Material de alta dureza requer setup adicional'
-        }),
-        ordem: 1,
-        prioridade: 2,
+        nome: 'ALTERAR_ULTIMA_OP',
+        descricao: 'Alterar chave de controle da última operação do roteiro',
+        tipo_condicao: 'ultima_operacao',
+        condicao_valor: null,
+        condicoes_multiplas: JSON.stringify([]),
+        operador_logico: 'E',
+        acao: 'alterar_chave_controle',
+        acao_valor: 'ZP99',
         ativo: 1
       },
       {
-        nome: 'Desconto para Lote Grande',
-        tipo: 'economia_escala',
-        condicoes: JSON.stringify({
-          quantidade: { maior_que: 100 }
-        }),
-        acoes: JSON.stringify({
-          multiplicar_custo: 0.85,
-          observacao: 'Desconto de 15% para lotes acima de 100 peças'
-        }),
-        ordem: 2,
-        prioridade: 1,
+        nome: 'REMOVER_OPERACAO_DOBRA_SIMPLES',
+        descricao: 'Remove operação de dobra quando qtd_dobras <= 2 e espessura < 1.0mm',
+        tipo_condicao: 'multiplas',
+        condicao_valor: null,
+        condicoes_multiplas: JSON.stringify([
+          { parametro: 'qtd_dobras', operador: '<=', valor: '2' },
+          { parametro: 'espessura_chapa', operador: '<', valor: '1.0' }
+        ]),
+        operador_logico: 'E',
+        acao: 'remover_operacao',
+        acao_valor: 'DA101',
         ativo: 1
       }
     ];
@@ -274,9 +308,9 @@ async function seedDatabase() {
     for (const regra of regras) {
       await runQuery(`
         INSERT OR IGNORE INTO regras_pos_calculo 
-        (nome, tipo, condicoes, acoes, ordem, prioridade, ativo, data_criacao)
-        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-      `, [regra.nome, regra.tipo, regra.condicoes, regra.acoes, regra.ordem, regra.prioridade, regra.ativo]);
+        (nome, descricao, tipo_condicao, condicao_valor, condicoes_multiplas, operador_logico, acao, acao_valor, ativo, data_criacao)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `, [regra.nome, regra.descricao, regra.tipo_condicao, regra.condicao_valor, regra.condicoes_multiplas, regra.operador_logico, regra.acao, regra.acao_valor, regra.ativo]);
     }
 
     // Dados para projetos

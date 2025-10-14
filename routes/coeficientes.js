@@ -5,56 +5,39 @@ const { getAllRows, getRow, runQuery } = require('../database/connection');
 // GET /orbis/coeficientes - Listar coeficientes
 router.get('/', async (req, res) => {
   try {
-    const { page = 1, limit = 50, search, categoria, tipo, ativo } = req.query;
+    const { page = 1, limit = 50, search, ativo } = req.query;
     const offset = (page - 1) * limit;
 
     let query = 'SELECT * FROM tabelas_coeficientes WHERE 1=1';
     let countQuery = 'SELECT COUNT(*) as total FROM tabelas_coeficientes WHERE 1=1';
     let params = [];
 
-    // Filtros
     if (search) {
       query += ' AND (nome LIKE ? OR descricao LIKE ?)';
       countQuery += ' AND (nome LIKE ? OR descricao LIKE ?)';
       params.push(`%${search}%`, `%${search}%`);
     }
 
-    if (categoria) {
-      query += ' AND categoria = ?';
-      countQuery += ' AND categoria = ?';
-      params.push(categoria);
-    }
-
-    if (tipo) {
-      query += ' AND tipo = ?';
-      countQuery += ' AND tipo = ?';
-      params.push(tipo);
-    }
-
     if (ativo !== undefined) {
-      query += ' AND ativo = ?';
-      countQuery += ' AND ativo = ?';
+      query += ' AND ativa = ?';
+      countQuery += ' AND ativa = ?';
       params.push(ativo === 'true' ? 1 : 0);
     }
 
-    // Ordenação e paginação
-    query += ' ORDER BY categoria, nome LIMIT ? OFFSET ?';
+    query += ' ORDER BY nome LIMIT ? OFFSET ?';
     params.push(parseInt(limit), parseInt(offset));
 
     const [rows, countResult] = await Promise.all([
       getAllRows(query, params),
-      getRow(countQuery, params.slice(0, -2)) // Remove limit e offset do count
+      getRow(countQuery, params.slice(0, -2))
     ]);
 
-    // Parse JSON fields
     const coeficientes = rows.map(row => ({
       ...row,
-      valores: row.valores ? JSON.parse(row.valores) : {},
-      ativo: Boolean(row.ativo)
+      parametros_condicao: row.parametros_condicao ? JSON.parse(row.parametros_condicao) : [],
+      dados_coeficientes: row.dados_coeficientes ? JSON.parse(row.dados_coeficientes) : [],
+      ativa: Boolean(row.ativa)
     }));
-
-    const total = countResult.total;
-    const totalPages = Math.ceil(total / limit);
 
     res.json({
       success: true,
@@ -62,8 +45,8 @@ router.get('/', async (req, res) => {
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
-        total,
-        totalPages
+        total: countResult.total,
+        totalPages: Math.ceil(countResult.total / limit)
       }
     });
   } catch (error) {
@@ -85,14 +68,15 @@ router.get('/:id', async (req, res) => {
     if (!row) {
       return res.status(404).json({
         success: false,
-        error: 'Coeficiente não encontrado'
+        error: 'Tabela não encontrada'
       });
     }
 
     const coeficiente = {
       ...row,
-      valores: row.valores ? JSON.parse(row.valores) : {},
-      ativo: Boolean(row.ativo)
+      parametros_condicao: row.parametros_condicao ? JSON.parse(row.parametros_condicao) : [],
+      dados_coeficientes: row.dados_coeficientes ? JSON.parse(row.dados_coeficientes) : [],
+      ativa: Boolean(row.ativa)
     };
 
     res.json({
@@ -109,49 +93,32 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// GET /orbis/coeficientes/categoria/:categoria - Buscar coeficientes por categoria
-router.get('/categoria/:categoria', async (req, res) => {
+// GET /orbis/coeficientes/nome/:nome - Buscar coeficiente por nome
+router.get('/nome/:nome', async (req, res) => {
   try {
-    const { categoria } = req.params;
-    const rows = await getAllRows('SELECT * FROM tabelas_coeficientes WHERE categoria = ? ORDER BY nome', [categoria]);
+    const { nome } = req.params;
+    const row = await getRow('SELECT * FROM tabelas_coeficientes WHERE nome = ?', [nome]);
 
-    const coeficientes = rows.map(row => ({
+    if (!row) {
+      return res.status(404).json({
+        success: false,
+        error: 'Tabela não encontrada'
+      });
+    }
+
+    const coeficiente = {
       ...row,
-      valores: row.valores ? JSON.parse(row.valores) : {},
-      ativo: Boolean(row.ativo)
-    }));
+      parametros_condicao: row.parametros_condicao ? JSON.parse(row.parametros_condicao) : [],
+      dados_coeficientes: row.dados_coeficientes ? JSON.parse(row.dados_coeficientes) : [],
+      ativa: Boolean(row.ativa)
+    };
 
     res.json({
       success: true,
-      data: coeficientes
+      data: coeficiente
     });
   } catch (error) {
-    console.error('Erro ao buscar coeficientes por categoria:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Erro interno do servidor',
-      message: error.message
-    });
-  }
-});
-
-// GET /orbis/coeficientes/ativos - Listar apenas coeficientes ativos
-router.get('/ativos', async (req, res) => {
-  try {
-    const rows = await getAllRows('SELECT * FROM tabelas_coeficientes WHERE ativo = 1 ORDER BY categoria, nome');
-
-    const coeficientes = rows.map(row => ({
-      ...row,
-      valores: row.valores ? JSON.parse(row.valores) : {},
-      ativo: Boolean(row.ativo)
-    }));
-
-    res.json({
-      success: true,
-      data: coeficientes
-    });
-  } catch (error) {
-    console.error('Erro ao listar coeficientes ativos:', error);
+    console.error('Erro ao buscar coeficiente por nome:', error);
     res.status(500).json({
       success: false,
       error: 'Erro interno do servidor',
@@ -163,48 +130,44 @@ router.get('/ativos', async (req, res) => {
 // POST /orbis/coeficientes - Criar novo coeficiente
 router.post('/', async (req, res) => {
   try {
-    const { nome, categoria, tipo, descricao, valores, unidade, tabela_sap, ativo } = req.body;
+    const { nome, descricao, parametros_condicao, dados_coeficientes, tabela_sap, ativa } = req.body;
 
-    // Validações
-    if (!nome || !categoria || !tipo) {
+    if (!nome || !parametros_condicao || !dados_coeficientes) {
       return res.status(400).json({
         success: false,
-        error: 'Campos obrigatórios: nome, categoria, tipo'
+        error: 'Campos obrigatórios: nome, parametros_condicao, dados_coeficientes'
       });
     }
 
-    // Verificar se nome já existe na categoria
-    const existing = await getRow('SELECT id FROM tabelas_coeficientes WHERE nome = ? AND categoria = ?', [nome, categoria]);
+    const existing = await getRow('SELECT id FROM tabelas_coeficientes WHERE nome = ?', [nome]);
     if (existing) {
       return res.status(409).json({
         success: false,
-        error: 'Já existe um coeficiente com este nome nesta categoria'
+        error: 'Já existe uma tabela de coeficientes com este nome'
       });
     }
 
     const query = `
       INSERT INTO tabelas_coeficientes 
-      (nome, categoria, tipo, descricao, valores, unidade, tabela_sap, ativo, data_criacao)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      (nome, descricao, parametros_condicao, dados_coeficientes, tabela_sap, ativa, data_criacao)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
     `;
 
     const result = await runQuery(query, [
       nome,
-      categoria,
-      tipo,
       descricao || null,
-      valores ? JSON.stringify(valores) : null,
-      unidade || null,
+      JSON.stringify(parametros_condicao),
+      JSON.stringify(dados_coeficientes),
       tabela_sap || null,
-      ativo !== undefined ? (ativo ? 1 : 0) : 1
+      ativa !== undefined ? (ativa ? 1 : 0) : 1
     ]);
 
-    // Buscar o registro criado
     const newRecord = await getRow('SELECT * FROM tabelas_coeficientes WHERE id = ?', [result.id]);
     const coeficiente = {
       ...newRecord,
-      valores: newRecord.valores ? JSON.parse(newRecord.valores) : {},
-      ativo: Boolean(newRecord.ativo)
+      parametros_condicao: JSON.parse(newRecord.parametros_condicao),
+      dados_coeficientes: JSON.parse(newRecord.dados_coeficientes),
+      ativa: Boolean(newRecord.ativa)
     };
 
     res.status(201).json({
@@ -225,53 +188,49 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { nome, categoria, tipo, descricao, valores, unidade, tabela_sap, ativo } = req.body;
+    const { nome, descricao, parametros_condicao, dados_coeficientes, tabela_sap, ativa } = req.body;
 
-    // Verificar se coeficiente existe
     const existing = await getRow('SELECT * FROM tabelas_coeficientes WHERE id = ?', [id]);
     if (!existing) {
       return res.status(404).json({
         success: false,
-        error: 'Coeficiente não encontrado'
+        error: 'Tabela de coeficientes não encontrada'
       });
     }
 
-    // Verificar se nome já existe na categoria (exceto o próprio registro)
-    if (nome && categoria && (nome !== existing.nome || categoria !== existing.categoria)) {
-      const nameExists = await getRow('SELECT id FROM tabelas_coeficientes WHERE nome = ? AND categoria = ? AND id != ?', [nome, categoria, id]);
+    if (nome && nome !== existing.nome) {
+      const nameExists = await getRow('SELECT id FROM tabelas_coeficientes WHERE nome = ? AND id != ?', [nome, id]);
       if (nameExists) {
         return res.status(409).json({
           success: false,
-          error: 'Já existe um coeficiente com este nome nesta categoria'
+          error: 'Já existe uma tabela de coeficientes com este nome'
         });
       }
     }
 
     const query = `
       UPDATE tabelas_coeficientes 
-      SET nome = ?, categoria = ?, tipo = ?, descricao = ?, valores = ?, 
-          unidade = ?, tabela_sap = ?, ativo = ?, data_modificacao = datetime('now')
+      SET nome = ?, descricao = ?, parametros_condicao = ?, dados_coeficientes = ?, 
+          tabela_sap = ?, ativa = ?, data_modificacao = datetime('now')
       WHERE id = ?
     `;
 
     await runQuery(query, [
       nome || existing.nome,
-      categoria || existing.categoria,
-      tipo || existing.tipo,
       descricao !== undefined ? descricao : existing.descricao,
-      valores !== undefined ? (valores ? JSON.stringify(valores) : null) : existing.valores,
-      unidade !== undefined ? unidade : existing.unidade,
+      parametros_condicao !== undefined ? JSON.stringify(parametros_condicao) : existing.parametros_condicao,
+      dados_coeficientes !== undefined ? JSON.stringify(dados_coeficientes) : existing.dados_coeficientes,
       tabela_sap !== undefined ? tabela_sap : existing.tabela_sap,
-      ativo !== undefined ? (ativo ? 1 : 0) : existing.ativo,
+      ativa !== undefined ? (ativa ? 1 : 0) : existing.ativa,
       id
     ]);
 
-    // Buscar o registro atualizado
     const updatedRecord = await getRow('SELECT * FROM tabelas_coeficientes WHERE id = ?', [id]);
     const coeficiente = {
       ...updatedRecord,
-      valores: updatedRecord.valores ? JSON.parse(updatedRecord.valores) : {},
-      ativo: Boolean(updatedRecord.ativo)
+      parametros_condicao: JSON.parse(updatedRecord.parametros_condicao),
+      dados_coeficientes: JSON.parse(updatedRecord.dados_coeficientes),
+      ativa: Boolean(updatedRecord.ativa)
     };
 
     res.json({
@@ -288,17 +247,76 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// PATCH /orbis/coeficientes/:id/desativar - Desativar coeficiente
+router.patch('/:id/desativar', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const existing = await getRow('SELECT * FROM tabelas_coeficientes WHERE id = ?', [id]);
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        error: 'Tabela de coeficientes não encontrada'
+      });
+    }
+
+    await runQuery("UPDATE tabelas_coeficientes SET ativa = 0, data_modificacao = datetime('now') WHERE id = ?", [id]);
+
+    res.json({
+      success: true,
+      message: 'Tabela de coeficientes desativada com sucesso',
+      data: { id: parseInt(id), ativo: false }
+    });
+  } catch (error) {
+    console.error('Erro ao desativar coeficiente:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor',
+      message: error.message
+    });
+  }
+});
+
+// PATCH /orbis/coeficientes/:id/ativar - Ativar coeficiente
+router.patch('/:id/ativar', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const existing = await getRow('SELECT * FROM tabelas_coeficientes WHERE id = ?', [id]);
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        error: 'Tabela de coeficientes não encontrada'
+      });
+    }
+
+    await runQuery("UPDATE tabelas_coeficientes SET ativa = 1, data_modificacao = datetime('now') WHERE id = ?", [id]);
+
+    res.json({
+      success: true,
+      message: 'Tabela de coeficientes ativada com sucesso',
+      data: { id: parseInt(id), ativo: true }
+    });
+  } catch (error) {
+    console.error('Erro ao ativar coeficiente:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor',
+      message: error.message
+    });
+  }
+});
+
 // DELETE /orbis/coeficientes/:id - Excluir coeficiente
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Verificar se coeficiente existe
     const existing = await getRow('SELECT * FROM tabelas_coeficientes WHERE id = ?', [id]);
     if (!existing) {
       return res.status(404).json({
         success: false,
-        error: 'Coeficiente não encontrado'
+        error: 'Tabela de coeficientes não encontrada'
       });
     }
 
@@ -306,7 +324,7 @@ router.delete('/:id', async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Coeficiente excluído permanentemente'
+      message: 'Tabela de coeficientes excluída permanentemente'
     });
   } catch (error) {
     console.error('Erro ao excluir coeficiente:', error);

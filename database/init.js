@@ -12,9 +12,9 @@ async function createTables() {
         tipo TEXT NOT NULL,
         unidade TEXT,
         descricao TEXT,
-        opcoes TEXT, -- JSON array para campos select/checkbox
+        opcoes TEXT,
         valor_padrao TEXT,
-        obrigatorio INTEGER DEFAULT 0, -- 0=false, 1=true
+        obrigatorio INTEGER DEFAULT 0,
         imagem_base64 TEXT,
         data_criacao DATETIME DEFAULT CURRENT_TIMESTAMP,
         data_modificacao DATETIME
@@ -25,94 +25,115 @@ async function createTables() {
     await runQuery(`
       CREATE TABLE IF NOT EXISTS etapas (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nome TEXT NOT NULL,
+        nome TEXT NOT NULL UNIQUE,
         descricao TEXT,
-        categoria TEXT NOT NULL,
-        ordem INTEGER,
-        tempo_estimado_minutos INTEGER,
-        parametros_necessarios TEXT, -- JSON array dos parâmetros necessários
-        configuracoes TEXT, -- JSON objeto com configurações específicas
-        observacoes TEXT,
+        centros TEXT NOT NULL,
+        centros_trabalho TEXT NOT NULL,
+        parametros_necessarios TEXT NOT NULL,
+        ativa INTEGER DEFAULT 1,
         data_criacao DATETIME DEFAULT CURRENT_TIMESTAMP,
-        data_modificacao DATETIME,
-        UNIQUE(nome, categoria)
+        data_modificacao DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    // Tabela rotas
+    await runQuery(`CREATE INDEX IF NOT EXISTS idx_etapas_nome ON etapas(nome)`);
+    await runQuery(`CREATE INDEX IF NOT EXISTS idx_etapas_ativa ON etapas(ativa)`);
+    await runQuery(`CREATE INDEX IF NOT EXISTS idx_etapas_centros ON etapas(centros)`);
+
+    // Tabela rotas - Seguindo padrão SQL Server enviado para TI
     await runQuery(`
       CREATE TABLE IF NOT EXISTS rotas (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         nome TEXT NOT NULL UNIQUE,
         descricao TEXT,
-        etapas TEXT, -- JSON array com {etapa_id, ordem, parametros_customizados}
-        configuracoes TEXT, -- JSON objeto com configurações da rota
-        observacoes TEXT,
-        ativo INTEGER DEFAULT 1, -- 0=false, 1=true
+        sequencia_centros TEXT NOT NULL,
+        ativa INTEGER DEFAULT 1,
         data_criacao DATETIME DEFAULT CURRENT_TIMESTAMP,
-        data_modificacao DATETIME
+        data_modificacao DATETIME DEFAULT CURRENT_TIMESTAMP,
+        centro_prod TEXT,
+        etapas TEXT NOT NULL
       )
     `);
 
-    // Tabela operacoes
+    await runQuery(`CREATE INDEX IF NOT EXISTS idx_rotas_nome ON rotas(nome)`);
+    await runQuery(`CREATE INDEX IF NOT EXISTS idx_rotas_ativa ON rotas(ativa)`);
+    await runQuery(`CREATE INDEX IF NOT EXISTS idx_rotas_centro_prod ON rotas(centro_prod)`);
+
+    // Tabela operacoes - Seguindo padrão SQL Server enviado para TI
     await runQuery(`
       CREATE TABLE IF NOT EXISTS operacoes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nome TEXT NOT NULL,
-        categoria TEXT NOT NULL,
-        descricao TEXT,
-        tipo_maquina TEXT NOT NULL,
-        tipo_operacao TEXT,
-        codigo_sap TEXT,
-        tempo_setup_min REAL,
-        tempo_processamento_min REAL,
-        custo_hora_operacao REAL,
-        taxa_refugo_padrao REAL,
-        condicoes_aplicacao TEXT, -- JSON objeto
-        configuracoes_avancadas TEXT, -- JSON objeto
-        parametros_processo TEXT, -- JSON array
-        observacoes_tecnicas TEXT,
+        sequencia TEXT NOT NULL,
+        centro_producao TEXT NOT NULL,
+        centro_trabalho TEXT NOT NULL,
+        chave_controle TEXT NOT NULL,
+        chave_modelo TEXT NOT NULL,
+        descricao TEXT NOT NULL,
+        tempo_homem REAL DEFAULT 0,
+        unidade_tempo_homem TEXT DEFAULT 'MIN',
+        tempo_maquina REAL DEFAULT 0,
+        unidade_tempo_maquina TEXT DEFAULT 'MIN',
+        tempo_preparacao REAL DEFAULT 0,
+        unidade_tempo_preparacao TEXT DEFAULT 'MIN',
+        formula_tempo_homem TEXT DEFAULT 'tempo_base',
+        formula_tempo_maquina TEXT DEFAULT 'tempo_base',
+        formula_tempo_preparacao TEXT DEFAULT 'tempo_base',
+        condicoes_aplicacao TEXT DEFAULT '[]',
+        ativo INTEGER DEFAULT 1,
         data_criacao DATETIME DEFAULT CURRENT_TIMESTAMP,
-        data_modificacao DATETIME,
-        UNIQUE(nome, tipo_maquina)
+        data_modificacao DATETIME DEFAULT CURRENT_TIMESTAMP,
+        regras_pos_calculo TEXT DEFAULT '[]',
+        validar_rota INTEGER DEFAULT 1,
+        explicacao_formula_homem TEXT DEFAULT '',
+        explicacao_formula_maquina TEXT DEFAULT '',
+        explicacao_formula_preparacao TEXT DEFAULT ''
       )
     `);
 
-    // Tabela tabelas_coeficientes
+    await runQuery(`CREATE INDEX IF NOT EXISTS idx_operacoes_centro_producao ON operacoes(centro_producao)`);
+    await runQuery(`CREATE INDEX IF NOT EXISTS idx_operacoes_centro_trabalho ON operacoes(centro_trabalho)`);
+    await runQuery(`CREATE INDEX IF NOT EXISTS idx_operacoes_ativo ON operacoes(ativo)`);
+
+    // Tabela tabelas_coeficientes - Seguindo padrão SQL Server enviado para TI
     await runQuery(`
       CREATE TABLE IF NOT EXISTS tabelas_coeficientes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nome TEXT NOT NULL,
-        categoria TEXT NOT NULL,
-        tipo TEXT NOT NULL,
+        nome TEXT NOT NULL UNIQUE,
         descricao TEXT,
-        valores TEXT, -- JSON objeto com os valores dos coeficientes
-        unidade TEXT,
+        parametros_condicao TEXT NOT NULL,
+        dados_coeficientes TEXT NOT NULL,
         tabela_sap TEXT,
-        ativo INTEGER DEFAULT 1, -- 0=false, 1=true
+        ativa INTEGER DEFAULT 1,
         data_criacao DATETIME DEFAULT CURRENT_TIMESTAMP,
-        data_modificacao DATETIME,
-        UNIQUE(nome, categoria)
+        data_modificacao DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    // Tabela regras_pos_calculo
+    await runQuery(`CREATE INDEX IF NOT EXISTS idx_coeficientes_nome ON tabelas_coeficientes(nome)`);
+    await runQuery(`CREATE INDEX IF NOT EXISTS idx_coeficientes_ativa ON tabelas_coeficientes(ativa)`);
+    await runQuery(`CREATE INDEX IF NOT EXISTS idx_coeficientes_tabela_sap ON tabelas_coeficientes(tabela_sap)`);
+
+    // Tabela regras_pos_calculo - Seguindo padrão SQL Server enviado para TI
     await runQuery(`
       CREATE TABLE IF NOT EXISTS regras_pos_calculo (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         nome TEXT NOT NULL UNIQUE,
         descricao TEXT,
-        tipo TEXT NOT NULL,
-        condicoes TEXT NOT NULL, -- JSON objeto com as condições
-        acoes TEXT NOT NULL, -- JSON objeto com as ações
-        ordem INTEGER,
-        prioridade INTEGER DEFAULT 1,
-        observacoes TEXT,
-        ativo INTEGER DEFAULT 1, -- 0=false, 1=true
+        tipo_condicao TEXT NOT NULL,
+        condicao_valor TEXT,
+        condicoes_multiplas TEXT,
+        operador_logico TEXT,
+        acao TEXT NOT NULL,
+        acao_valor TEXT NOT NULL,
+        ativo INTEGER DEFAULT 1,
         data_criacao DATETIME DEFAULT CURRENT_TIMESTAMP,
-        data_modificacao DATETIME
+        data_modificacao DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    await runQuery(`CREATE INDEX IF NOT EXISTS idx_regras_nome ON regras_pos_calculo(nome)`);
+    await runQuery(`CREATE INDEX IF NOT EXISTS idx_regras_ativo ON regras_pos_calculo(ativo)`);
+    await runQuery(`CREATE INDEX IF NOT EXISTS idx_regras_tipo_condicao ON regras_pos_calculo(tipo_condicao)`);
 
     // Tabela projetos
     await runQuery(`
@@ -121,7 +142,7 @@ async function createTables() {
         nome TEXT NOT NULL UNIQUE,
         descricao TEXT,
         responsavel TEXT NOT NULL,
-        roteiro TEXT, -- JSON objeto com rotas e configurações
+        roteiro TEXT,
         observacoes TEXT,
         status TEXT DEFAULT 'Planejamento',
         data_criacao DATETIME DEFAULT CURRENT_TIMESTAMP,

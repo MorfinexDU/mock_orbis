@@ -5,57 +5,58 @@ const { getAllRows, getRow, runQuery } = require('../database/connection');
 // GET /orbis/operacoes - Listar operações
 router.get('/', async (req, res) => {
   try {
-    const { page = 1, limit = 50, search, categoria, tipo_maquina, tipo_operacao } = req.query;
+    const { page = 1, limit = 50, search, sequencia, centro_trabalho, centro_producao, ativo } = req.query;
     const offset = (page - 1) * limit;
 
     let query = 'SELECT * FROM operacoes WHERE 1=1';
     let countQuery = 'SELECT COUNT(*) as total FROM operacoes WHERE 1=1';
     let params = [];
 
-    // Filtros
     if (search) {
-      query += ' AND (nome LIKE ? OR descricao LIKE ?)';
-      countQuery += ' AND (nome LIKE ? OR descricao LIKE ?)';
+      query += ' AND (descricao LIKE ? OR centro_trabalho LIKE ?)';
+      countQuery += ' AND (descricao LIKE ? OR centro_trabalho LIKE ?)';
       params.push(`%${search}%`, `%${search}%`);
     }
 
-    if (categoria) {
-      query += ' AND categoria = ?';
-      countQuery += ' AND categoria = ?';
-      params.push(categoria);
+    if (sequencia) {
+      query += ' AND sequencia = ?';
+      countQuery += ' AND sequencia = ?';
+      params.push(sequencia);
     }
 
-    if (tipo_maquina) {
-      query += ' AND tipo_maquina = ?';
-      countQuery += ' AND tipo_maquina = ?';
-      params.push(tipo_maquina);
+    if (centro_trabalho) {
+      query += ' AND centro_trabalho = ?';
+      countQuery += ' AND centro_trabalho = ?';
+      params.push(centro_trabalho);
     }
 
-    if (tipo_operacao) {
-      query += ' AND tipo_operacao = ?';
-      countQuery += ' AND tipo_operacao = ?';
-      params.push(tipo_operacao);
+    if (centro_producao) {
+      query += ' AND centro_producao = ?';
+      countQuery += ' AND centro_producao = ?';
+      params.push(centro_producao);
     }
 
-    // Ordenação e paginação
-    query += ' ORDER BY categoria, nome LIMIT ? OFFSET ?';
+    if (ativo !== undefined) {
+      query += ' AND ativo = ?';
+      countQuery += ' AND ativo = ?';
+      params.push(ativo === 'true' ? 1 : 0);
+    }
+
+    query += ' ORDER BY centro_producao, centro_trabalho, sequencia LIMIT ? OFFSET ?';
     params.push(parseInt(limit), parseInt(offset));
 
     const [rows, countResult] = await Promise.all([
       getAllRows(query, params),
-      getRow(countQuery, params.slice(0, -2)) // Remove limit e offset do count
+      getRow(countQuery, params.slice(0, -2))
     ]);
 
-    // Parse JSON fields
     const operacoes = rows.map(row => ({
       ...row,
-      condicoes_aplicacao: row.condicoes_aplicacao ? JSON.parse(row.condicoes_aplicacao) : {},
-      configuracoes_avancadas: row.configuracoes_avancadas ? JSON.parse(row.configuracoes_avancadas) : {},
-      parametros_processo: row.parametros_processo ? JSON.parse(row.parametros_processo) : []
+      condicoes_aplicacao: row.condicoes_aplicacao ? JSON.parse(row.condicoes_aplicacao) : [],
+      regras_pos_calculo: row.regras_pos_calculo ? JSON.parse(row.regras_pos_calculo) : [],
+      ativo: Boolean(row.ativo),
+      validar_rota: Boolean(row.validar_rota)
     }));
-
-    const total = countResult.total;
-    const totalPages = Math.ceil(total / limit);
 
     res.json({
       success: true,
@@ -63,8 +64,8 @@ router.get('/', async (req, res) => {
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
-        total,
-        totalPages
+        total: countResult.total,
+        totalPages: Math.ceil(countResult.total / limit)
       }
     });
   } catch (error) {
@@ -92,9 +93,10 @@ router.get('/:id', async (req, res) => {
 
     const operacao = {
       ...row,
-      condicoes_aplicacao: row.condicoes_aplicacao ? JSON.parse(row.condicoes_aplicacao) : {},
-      configuracoes_avancadas: row.configuracoes_avancadas ? JSON.parse(row.configuracoes_avancadas) : {},
-      parametros_processo: row.parametros_processo ? JSON.parse(row.parametros_processo) : []
+      condicoes_aplicacao: row.condicoes_aplicacao ? JSON.parse(row.condicoes_aplicacao) : [],
+      regras_pos_calculo: row.regras_pos_calculo ? JSON.parse(row.regras_pos_calculo) : [],
+      ativo: Boolean(row.ativo),
+      validar_rota: Boolean(row.validar_rota)
     };
 
     res.json({
@@ -111,17 +113,18 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// GET /orbis/operacoes/categoria/:categoria - Buscar operações por categoria
-router.get('/categoria/:categoria', async (req, res) => {
+// GET /orbis/operacoes/centro_trabalho/:centro_trabalho - Buscar operações por centro de trabalho
+router.get('/centro_trabalho/:centro_trabalho', async (req, res) => {
   try {
-    const { categoria } = req.params;
-    const rows = await getAllRows('SELECT * FROM operacoes WHERE categoria = ? ORDER BY nome', [categoria]);
+    const { centro_trabalho } = req.params;
+    const rows = await getAllRows('SELECT * FROM operacoes WHERE centro_trabalho = ? ORDER BY sequencia', [centro_trabalho]);
 
     const operacoes = rows.map(row => ({
       ...row,
-      condicoes_aplicacao: row.condicoes_aplicacao ? JSON.parse(row.condicoes_aplicacao) : {},
-      configuracoes_avancadas: row.configuracoes_avancadas ? JSON.parse(row.configuracoes_avancadas) : {},
-      parametros_processo: row.parametros_processo ? JSON.parse(row.parametros_processo) : []
+      condicoes_aplicacao: row.condicoes_aplicacao ? JSON.parse(row.condicoes_aplicacao) : [],
+      regras_pos_calculo: row.regras_pos_calculo ? JSON.parse(row.regras_pos_calculo) : [],
+      ativo: Boolean(row.ativo),
+      validar_rota: Boolean(row.validar_rota)
     }));
 
     res.json({
@@ -129,34 +132,7 @@ router.get('/categoria/:categoria', async (req, res) => {
       data: operacoes
     });
   } catch (error) {
-    console.error('Erro ao buscar operações por categoria:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Erro interno do servidor',
-      message: error.message
-    });
-  }
-});
-
-// GET /orbis/operacoes/tipo/:tipo_maquina - Buscar operações por tipo de máquina
-router.get('/tipo/:tipo_maquina', async (req, res) => {
-  try {
-    const { tipo_maquina } = req.params;
-    const rows = await getAllRows('SELECT * FROM operacoes WHERE tipo_maquina = ? ORDER BY categoria, nome', [tipo_maquina]);
-
-    const operacoes = rows.map(row => ({
-      ...row,
-      condicoes_aplicacao: row.condicoes_aplicacao ? JSON.parse(row.condicoes_aplicacao) : {},
-      configuracoes_avancadas: row.configuracoes_avancadas ? JSON.parse(row.configuracoes_avancadas) : {},
-      parametros_processo: row.parametros_processo ? JSON.parse(row.parametros_processo) : []
-    }));
-
-    res.json({
-      success: true,
-      data: operacoes
-    });
-  } catch (error) {
-    console.error('Erro ao buscar operações por tipo de máquina:', error);
+    console.error('Erro ao buscar operações por centro de trabalho:', error);
     res.status(500).json({
       success: false,
       error: 'Erro interno do servidor',
@@ -169,74 +145,52 @@ router.get('/tipo/:tipo_maquina', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const { 
-      nome,
-      categoria,
-      descricao,
-      tipo_maquina,
-      tipo_operacao,
-      codigo_sap,
-      tempo_setup_min,
-      tempo_processamento_min,
-      custo_hora_operacao,
-      taxa_refugo_padrao,
-      condicoes_aplicacao,
-      configuracoes_avancadas,
-      parametros_processo,
-      observacoes_tecnicas
+      sequencia, centro_producao, centro_trabalho, chave_controle, chave_modelo, descricao,
+      tempo_homem, unidade_tempo_homem, tempo_maquina, unidade_tempo_maquina,
+      tempo_preparacao, unidade_tempo_preparacao, formula_tempo_homem, formula_tempo_maquina,
+      formula_tempo_preparacao, condicoes_aplicacao, explicacao_formula_homem,
+      explicacao_formula_maquina, explicacao_formula_preparacao, regras_pos_calculo,
+      validar_rota, ativo
     } = req.body;
 
-    // Validações
-    if (!nome || !categoria || !tipo_maquina) {
+    if (!sequencia || !centro_producao || !centro_trabalho || !chave_controle || !chave_modelo || !descricao) {
       return res.status(400).json({
         success: false,
-        error: 'Campos obrigatórios: nome, categoria, tipo_maquina'
-      });
-    }
-
-    // Verificar se já existe operação com mesmo nome e tipo de máquina
-    const existing = await getRow(
-      'SELECT id FROM operacoes WHERE nome = ? AND tipo_maquina = ?', 
-      [nome, tipo_maquina]
-    );
-    if (existing) {
-      return res.status(409).json({
-        success: false,
-        error: 'Já existe uma operação com este nome para este tipo de máquina'
+        error: 'Campos obrigatórios: sequencia, centro_producao, centro_trabalho, chave_controle, chave_modelo, descricao'
       });
     }
 
     const query = `
       INSERT INTO operacoes 
-      (nome, categoria, descricao, tipo_maquina, tipo_operacao, codigo_sap, tempo_setup_min, 
-       tempo_processamento_min, custo_hora_operacao, taxa_refugo_padrao, condicoes_aplicacao, 
-       configuracoes_avancadas, parametros_processo, observacoes_tecnicas, data_criacao)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      (sequencia, centro_producao, centro_trabalho, chave_controle, chave_modelo, descricao,
+       tempo_homem, unidade_tempo_homem, tempo_maquina, unidade_tempo_maquina,
+       tempo_preparacao, unidade_tempo_preparacao, formula_tempo_homem, formula_tempo_maquina,
+       formula_tempo_preparacao, condicoes_aplicacao, explicacao_formula_homem,
+       explicacao_formula_maquina, explicacao_formula_preparacao, regras_pos_calculo,
+       validar_rota, ativo, data_criacao)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     `;
 
     const result = await runQuery(query, [
-      nome,
-      categoria,
-      descricao || null,
-      tipo_maquina,
-      tipo_operacao || null,
-      codigo_sap || null,
-      tempo_setup_min || null,
-      tempo_processamento_min || null,
-      custo_hora_operacao || null,
-      taxa_refugo_padrao || null,
-      condicoes_aplicacao ? JSON.stringify(condicoes_aplicacao) : null,
-      configuracoes_avancadas ? JSON.stringify(configuracoes_avancadas) : null,
-      parametros_processo ? JSON.stringify(parametros_processo) : null,
-      observacoes_tecnicas || null
+      sequencia, centro_producao, centro_trabalho, chave_controle, chave_modelo, descricao,
+      tempo_homem || 0, unidade_tempo_homem || 'MIN', tempo_maquina || 0, unidade_tempo_maquina || 'MIN',
+      tempo_preparacao || 0, unidade_tempo_preparacao || 'MIN', 
+      formula_tempo_homem || 'tempo_base', formula_tempo_maquina || 'tempo_base',
+      formula_tempo_preparacao || 'tempo_base', 
+      condicoes_aplicacao ? JSON.stringify(condicoes_aplicacao) : '[]',
+      explicacao_formula_homem || '', explicacao_formula_maquina || '', explicacao_formula_preparacao || '',
+      regras_pos_calculo ? JSON.stringify(regras_pos_calculo) : '[]',
+      validar_rota !== undefined ? (validar_rota ? 1 : 0) : 1,
+      ativo !== undefined ? (ativo ? 1 : 0) : 1
     ]);
 
-    // Buscar o registro criado
     const newRecord = await getRow('SELECT * FROM operacoes WHERE id = ?', [result.id]);
     const operacao = {
       ...newRecord,
-      condicoes_aplicacao: newRecord.condicoes_aplicacao ? JSON.parse(newRecord.condicoes_aplicacao) : {},
-      configuracoes_avancadas: newRecord.configuracoes_avancadas ? JSON.parse(newRecord.configuracoes_avancadas) : {},
-      parametros_processo: newRecord.parametros_processo ? JSON.parse(newRecord.parametros_processo) : []
+      condicoes_aplicacao: JSON.parse(newRecord.condicoes_aplicacao),
+      regras_pos_calculo: JSON.parse(newRecord.regras_pos_calculo),
+      ativo: Boolean(newRecord.ativo),
+      validar_rota: Boolean(newRecord.validar_rota)
     };
 
     res.status(201).json({
@@ -258,23 +212,14 @@ router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { 
-      nome,
-      categoria,
-      descricao,
-      tipo_maquina,
-      tipo_operacao,
-      codigo_sap,
-      tempo_setup_min,
-      tempo_processamento_min,
-      custo_hora_operacao,
-      taxa_refugo_padrao,
-      condicoes_aplicacao,
-      configuracoes_avancadas,
-      parametros_processo,
-      observacoes_tecnicas
+      sequencia, centro_producao, centro_trabalho, chave_controle, chave_modelo, descricao,
+      tempo_homem, unidade_tempo_homem, tempo_maquina, unidade_tempo_maquina,
+      tempo_preparacao, unidade_tempo_preparacao, formula_tempo_homem, formula_tempo_maquina,
+      formula_tempo_preparacao, condicoes_aplicacao, explicacao_formula_homem,
+      explicacao_formula_maquina, explicacao_formula_preparacao, regras_pos_calculo,
+      validar_rota, ativo
     } = req.body;
 
-    // Verificar se operação existe
     const existing = await getRow('SELECT * FROM operacoes WHERE id = ?', [id]);
     if (!existing) {
       return res.status(404).json({
@@ -283,54 +228,50 @@ router.put('/:id', async (req, res) => {
       });
     }
 
-    // Verificar se já existe operação com mesmo nome e tipo de máquina (exceto o próprio registro)
-    if (nome && tipo_maquina && (nome !== existing.nome || tipo_maquina !== existing.tipo_maquina)) {
-      const nameExists = await getRow(
-        'SELECT id FROM operacoes WHERE nome = ? AND tipo_maquina = ? AND id != ?', 
-        [nome, tipo_maquina, id]
-      );
-      if (nameExists) {
-        return res.status(409).json({
-          success: false,
-          error: 'Já existe uma operação com este nome para este tipo de máquina'
-        });
-      }
-    }
-
     const query = `
       UPDATE operacoes 
-      SET nome = ?, categoria = ?, descricao = ?, tipo_maquina = ?, tipo_operacao = ?, 
-          codigo_sap = ?, tempo_setup_min = ?, tempo_processamento_min = ?, custo_hora_operacao = ?, 
-          taxa_refugo_padrao = ?, condicoes_aplicacao = ?, configuracoes_avancadas = ?, 
-          parametros_processo = ?, observacoes_tecnicas = ?, data_modificacao = datetime('now')
+      SET sequencia = ?, centro_producao = ?, centro_trabalho = ?, chave_controle = ?, chave_modelo = ?, descricao = ?,
+          tempo_homem = ?, unidade_tempo_homem = ?, tempo_maquina = ?, unidade_tempo_maquina = ?,
+          tempo_preparacao = ?, unidade_tempo_preparacao = ?, formula_tempo_homem = ?, formula_tempo_maquina = ?,
+          formula_tempo_preparacao = ?, condicoes_aplicacao = ?, explicacao_formula_homem = ?,
+          explicacao_formula_maquina = ?, explicacao_formula_preparacao = ?, regras_pos_calculo = ?,
+          validar_rota = ?, ativo = ?, data_modificacao = datetime('now')
       WHERE id = ?
     `;
 
     await runQuery(query, [
-      nome || existing.nome,
-      categoria || existing.categoria,
-      descricao !== undefined ? descricao : existing.descricao,
-      tipo_maquina || existing.tipo_maquina,
-      tipo_operacao !== undefined ? tipo_operacao : existing.tipo_operacao,
-      codigo_sap !== undefined ? codigo_sap : existing.codigo_sap,
-      tempo_setup_min !== undefined ? tempo_setup_min : existing.tempo_setup_min,
-      tempo_processamento_min !== undefined ? tempo_processamento_min : existing.tempo_processamento_min,
-      custo_hora_operacao !== undefined ? custo_hora_operacao : existing.custo_hora_operacao,
-      taxa_refugo_padrao !== undefined ? taxa_refugo_padrao : existing.taxa_refugo_padrao,
-      condicoes_aplicacao !== undefined ? (condicoes_aplicacao ? JSON.stringify(condicoes_aplicacao) : null) : existing.condicoes_aplicacao,
-      configuracoes_avancadas !== undefined ? (configuracoes_avancadas ? JSON.stringify(configuracoes_avancadas) : null) : existing.configuracoes_avancadas,
-      parametros_processo !== undefined ? (parametros_processo ? JSON.stringify(parametros_processo) : null) : existing.parametros_processo,
-      observacoes_tecnicas !== undefined ? observacoes_tecnicas : existing.observacoes_tecnicas,
+      sequencia || existing.sequencia,
+      centro_producao || existing.centro_producao,
+      centro_trabalho || existing.centro_trabalho,
+      chave_controle || existing.chave_controle,
+      chave_modelo || existing.chave_modelo,
+      descricao || existing.descricao,
+      tempo_homem !== undefined ? tempo_homem : existing.tempo_homem,
+      unidade_tempo_homem || existing.unidade_tempo_homem,
+      tempo_maquina !== undefined ? tempo_maquina : existing.tempo_maquina,
+      unidade_tempo_maquina || existing.unidade_tempo_maquina,
+      tempo_preparacao !== undefined ? tempo_preparacao : existing.tempo_preparacao,
+      unidade_tempo_preparacao || existing.unidade_tempo_preparacao,
+      formula_tempo_homem || existing.formula_tempo_homem,
+      formula_tempo_maquina || existing.formula_tempo_maquina,
+      formula_tempo_preparacao || existing.formula_tempo_preparacao,
+      condicoes_aplicacao !== undefined ? JSON.stringify(condicoes_aplicacao) : existing.condicoes_aplicacao,
+      explicacao_formula_homem !== undefined ? explicacao_formula_homem : existing.explicacao_formula_homem,
+      explicacao_formula_maquina !== undefined ? explicacao_formula_maquina : existing.explicacao_formula_maquina,
+      explicacao_formula_preparacao !== undefined ? explicacao_formula_preparacao : existing.explicacao_formula_preparacao,
+      regras_pos_calculo !== undefined ? JSON.stringify(regras_pos_calculo) : existing.regras_pos_calculo,
+      validar_rota !== undefined ? (validar_rota ? 1 : 0) : existing.validar_rota,
+      ativo !== undefined ? (ativo ? 1 : 0) : existing.ativo,
       id
     ]);
 
-    // Buscar o registro atualizado
     const updatedRecord = await getRow('SELECT * FROM operacoes WHERE id = ?', [id]);
     const operacao = {
       ...updatedRecord,
-      condicoes_aplicacao: updatedRecord.condicoes_aplicacao ? JSON.parse(updatedRecord.condicoes_aplicacao) : {},
-      configuracoes_avancadas: updatedRecord.configuracoes_avancadas ? JSON.parse(updatedRecord.configuracoes_avancadas) : {},
-      parametros_processo: updatedRecord.parametros_processo ? JSON.parse(updatedRecord.parametros_processo) : []
+      condicoes_aplicacao: JSON.parse(updatedRecord.condicoes_aplicacao),
+      regras_pos_calculo: JSON.parse(updatedRecord.regras_pos_calculo),
+      ativo: Boolean(updatedRecord.ativo),
+      validar_rota: Boolean(updatedRecord.validar_rota)
     };
 
     res.json({
@@ -347,12 +288,71 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// PATCH /orbis/operacoes/:id/desativar - Desativar operação
+router.patch('/:id/desativar', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const existing = await getRow('SELECT * FROM operacoes WHERE id = ?', [id]);
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        error: 'Operação não encontrada'
+      });
+    }
+
+    await runQuery("UPDATE operacoes SET ativo = 0, data_modificacao = datetime('now') WHERE id = ?", [id]);
+
+    res.json({
+      success: true,
+      message: 'Operação desativada com sucesso',
+      data: { id: parseInt(id), ativo: false }
+    });
+  } catch (error) {
+    console.error('Erro ao desativar operação:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor',
+      message: error.message
+    });
+  }
+});
+
+// PATCH /orbis/operacoes/:id/ativar - Ativar operação
+router.patch('/:id/ativar', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const existing = await getRow('SELECT * FROM operacoes WHERE id = ?', [id]);
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        error: 'Operação não encontrada'
+      });
+    }
+
+    await runQuery("UPDATE operacoes SET ativo = 1, data_modificacao = datetime('now') WHERE id = ?", [id]);
+
+    res.json({
+      success: true,
+      message: 'Operação ativada com sucesso',
+      data: { id: parseInt(id), ativo: true }
+    });
+  } catch (error) {
+    console.error('Erro ao ativar operação:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor',
+      message: error.message
+    });
+  }
+});
+
 // DELETE /orbis/operacoes/:id - Excluir operação
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Verificar se operação existe
     const existing = await getRow('SELECT * FROM operacoes WHERE id = ?', [id]);
     if (!existing) {
       return res.status(404).json({
