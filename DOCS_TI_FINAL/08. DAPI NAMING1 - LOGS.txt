@@ -1,0 +1,143 @@
+1 DESCRIÇÃO
+A tabela "logs_auditoria" registra todas as operações de criação, modificação, exclusão, ativação e desativação realizadas nas tabelas do sistema ORBIS.
+Permite rastreabilidade completa de alterações, identificando quem fez, quando fez, o que foi alterado e quais eram os valores anteriores.
+* Registra automaticamente todas operações CREATE, UPDATE, DELETE, ACTIVATE, DEACTIVATE
+* Identifica usuário responsável por cada operação
+* Armazena valores anteriores e novos para comparação
+* Detecta automaticamente campos alterados
+* Mantém histórico completo e imutável de alterações
+* Suporta auditoria e compliance
+* Facilita troubleshooting e reversão de alterações
+* Permite análise de padrões de uso do sistema
+
+2 OBJETIVO
+
+* Garantir rastreabilidade completa de todas operações
+* Identificar responsável por cada alteração
+* Manter histórico imutável para auditoria
+* Facilitar troubleshooting e análise de problemas
+* Suportar compliance e governança de dados
+* Permitir reversão de alterações quando necessário
+* Monitorar atividade de usuários no sistema
+* Detectar padrões de uso e possíveis anomalias
+
+3 LÓGICA TÉCNICA DE AQUISIÇÃO DE DADOS
+Fontes
+* Trigger automático em todas operações de CREATE, UPDATE, DELETE nas tabelas:
+- parametros_processo
+- etapas_processo
+- rotas
+- operacoes
+- tabelas_coeficientes
+- regras_pos_calculo
+- projetos
+Script para criar tabela
+CREATE TABLE logs_auditoria (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    tabela_afetada NVARCHAR(100) NOT NULL,
+    registro_id INT NOT NULL,
+    operacao NVARCHAR(20) NOT NULL,
+    campos_alterados NVARCHAR(MAX),
+    valores_anteriores NVARCHAR(MAX),
+    valores_novos NVARCHAR(MAX),
+    user_id NVARCHAR(100),
+    data_operacao DATETIME2 DEFAULT GETDATE(),
+    observacoes NVARCHAR(500)
+);
+
+-- Índices para performance
+CREATE INDEX idx_logs_tabela ON logs_auditoria(tabela_afetada);
+CREATE INDEX idx_logs_operacao ON logs_auditoria(operacao);
+CREATE INDEX idx_logs_registro ON logs_auditoria(registro_id);
+CREATE INDEX idx_logs_user ON logs_auditoria(user_id);
+CREATE INDEX idx_logs_data ON logs_auditoria(data_operacao);
+
+-- Constraint para validar tipo de operação
+ALTER TABLE logs_auditoria
+ADD CONSTRAINT chk_logs_operacao 
+CHECK (operacao IN ('CREATE', 'UPDATE', 'DELETE', 'ACTIVATE', 'DEACTIVATE'));
+
+-- Constraint para validar JSON
+ALTER TABLE logs_auditoria
+ADD CONSTRAINT chk_logs_campos_json 
+CHECK (campos_alterados IS NULL OR ISJSON(campos_alterados) = 1);
+
+ALTER TABLE logs_auditoria
+ADD CONSTRAINT chk_logs_valores_anteriores_json 
+CHECK (valores_anteriores IS NULL OR ISJSON(valores_anteriores) = 1);
+
+ALTER TABLE logs_auditoria
+ADD CONSTRAINT chk_logs_valores_novos_json 
+CHECK (valores_novos IS NULL OR ISJSON(valores_novos) = 1);
+    
+
+4 FILTROS
+Recomendações de filtros no consumo (API/relatórios/SQL):
+* Por usuário
+* Por tabela
+* Por tipo (Delete, create, etc..)
+5 RECORRÊNCIA DE ATUALIZAÇÃO
+* Widget/API ? Tempo real (transacional) - cada operação gera log imediatamente.
+6 CAMPO CHAVE PARA ATUALIZAÇÃO
+Chave primária: id (INT IDENTITY)
+
+Chave natural (UNIQUE): nome - garante que não existam projetos com nomes duplicados
+
+Estratégia de operações:
+
+CREATE (POST)
+   Automático via função registrarLog() dentro das chamadas das APIS.
+1. API – DADOS DE ENTRADA
+
+
+7 API – DADOS DE SAÍDA
+
+GET /orbis/logs - Listar logs com filtros
+* Descrição: Retorna lista de logs de auditoria com paginação e filtros
+* Parâmetros: filtros opcionais
+* Retorno: coleção de logs.
+
+GET /orbis/logs/:id – Buscar log por ID
+* Descrição: Retorna um log específico pelo ID
+2. CATEGORIZAÇÃO DO DHIVE
+
+
+
+
+
+3. ÁREAS IMPACTADAS PELA INFORMAÇÃO
+Engenharia de Processos
+
+4. VALOR AGREGADO PARA A COMPANHIA
+* Rastreabilidade: Histórico completo de todas alterações no sistema
+* Compliance: Atende requisitos de auditoria e governança de dados
+* Segurança: Identifica quem fez cada alteração e quando
+* Troubleshooting: Facilita identificação de causa raiz de problemas
+* Reversão: Permite recuperar valores anteriores quando necessário
+* Análise: Identifica padrões de uso e possíveis melhorias
+* Responsabilização: Garante accountability de todas operações
+* Transparência: Visibilidade total sobre alterações no sistema
+* Proteção: Logs imutáveis garantem integridade do histórico
+* Migração 3DEXPERIENCE: Histórico completo para análise pós-migração
+* Conhecimento: Preserva histórico de evolução de configurações
+* Qualidade: Suporta análise de impacto de alterações em processos
+5. INTEGRAÇÃO COM OUTRAS TABELAS
+A tabela logs_auditoria registra operações nas seguintes tabelas:
+
+* parametros_processo - Parâmetros de entrada para cálculos
+* etapas_processo - Etapas de produção
+* rotas - Rotas de fabricação
+* operacoes - Operações de manufatura
+* tabelas_coeficientes - Tabelas de coeficientes
+* regras_pos_calculo - Regras de ajuste pós-cálculo
+* projetos - Projetos salvos pelos usuários
+Elaboração de API
+
+
+		
+
+        DAPI - Document Application Programming Interface
+
+		
+
+

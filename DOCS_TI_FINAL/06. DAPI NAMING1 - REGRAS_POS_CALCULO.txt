@@ -1,0 +1,335 @@
+1 DESCRIÇÃO
+A tabela "regras_pos_calculo" armazena regras de negócio que são aplicadas automaticamente após o cálculo de TPE, permitindo ajustes dinâmicos nos resultados conforme condições específicas.
+Essas regras permitem alterar chaves de controle, modificar tempos, adicionar ou remover operações baseado em condições lógicas complexas.
+* Define regras de ajuste pós-cálculo
+* Suporta condições simples e múltiplas com operadores lógicos (E/OU)
+* Permite ações diversas (alterar chave, modificar tempo, adicionar operação)
+* Automatiza lógicas de negócio complexas
+* Mantém histórico de regras aplicadas
+
+2 OBJETIVO
+
+* Automatizar ajustes pós-cálculo sem alteração de código
+* Permitir regras de negócio configuráveis
+* Suportar condições complexas com múltiplos parâmetros
+* Integrar com operações e resultados de cálculo
+* Facilitar manutenção de lógicas de negócio
+
+3 LÓGICA TÉCNICA DE AQUISIÇÃO DE DADOS
+Fontes
+* Interface administrativa do widget (criação/edição de parâmetros);
+* Chamadas de API diretamente (criação/edição de parâmetros).
+Script para criar tabela
+CREATE TABLE regras_pos_calculo (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    nome NVARCHAR(200) NOT NULL UNIQUE,
+    descricao NVARCHAR(MAX),
+    tipo_condicao NVARCHAR(100) NOT NULL,
+    condicao_valor NVARCHAR(MAX),
+    condicoes_multiplas NVARCHAR(MAX),
+    operador_logico NVARCHAR(10),
+    acao NVARCHAR(100) NOT NULL,
+    acao_valor NVARCHAR(MAX) NOT NULL,
+    ativo BIT DEFAULT 1,
+    data_criacao DATETIME2 DEFAULT GETDATE(),
+    data_modificacao DATETIME2 DEFAULT GETDATE()
+);
+
+-- Índices para performance
+CREATE INDEX idx_regras_nome ON regras_pos_calculo(nome);
+CREATE INDEX idx_regras_ativo ON regras_pos_calculo(ativo);
+CREATE INDEX idx_regras_tipo_condicao ON regras_pos_calculo(tipo_condicao);
+
+-- Constraint para validar JSON no campo condicoes_multiplas
+ALTER TABLE regras_pos_calculo
+ADD CONSTRAINT chk_regras_condicoes_json 
+CHECK (condicoes_multiplas IS NULL OR ISJSON(condicoes_multiplas) = 1);
+
+
+ 
+
+4 FILTROS
+Recomendações de filtros no consumo (API/relatórios/SQL):
+* Por nome
+* Por tipo_condicao
+* Por ativo (ativo/inativo)
+* Por ação
+* Busca textual em nome ou descrição
+
+5 RECORRÊNCIA DE ATUALIZAÇÃO
+* Widget/API ? atualização em tempo real (transacional).
+6 CAMPO CHAVE PARA ATUALIZAÇÃO
+Chave primária: id (INT IDENTITY)
+
+Chave natural (UNIQUE): nome - garante que não existam regras com nomes duplicados
+
+Estratégia de operações:
+
+CREATE (POST)
+- Valida se nome já existe (UNIQUE constraint)
+- Insere novo registro com ID auto-gerado
+
+UPDATE (PUT)
+- Identificação por id enviado na URL (/orbis/regras/:id)
+- Atualiza campos enviados no body
+- Atualiza data_atualizacao = CURRENT_TIMESTAMP
+- Valida unicidade de nome se este campo for alterado
+
+DELETE (DELETE)
+- Quando usuário excluir via widget: DELETE FROM regras_pos_calculo WHERE id = @id
+- Remove permanentemente o registro do banco
+- Usado quando a regra foi criada por engano ou não é mais necessária
+
+DESATIVAR (PATCH)
+- Quando usuário desativar via widget: UPDATE regras_pos_calculo SET ativo = 0 WHERE id = @id
+- Mantém o registro no banco com ativo = 0
+- Usado quando a regra não deve mais aparecer, mas precisa ser mantida para histórico/auditoria
+
+1. API – DADOS DE ENTRADA
+
+POST /orbis/regras - Criar nova regra
+* Descrição: Cria uma nova regra de pós-cálculo no sistema.
+* Body (JSON):
+{
+  "nome": "ALTERAR_ULTIMA_OP",
+  "descricao": "Alterar chave de controle da última operação do roteiro",
+  "tipo_condicao": "ultima_operacao",
+  "condicao_valor": null,
+  "condicoes_multiplas": [],
+  "operador_logico": "E",
+  "acao": "alterar_chave_controle",
+  "acao_valor": "ZP99",
+  "ativo": true
+}
+* Retorno 201:
+{
+  "success": true,
+  "data": {
+    "id": 11,
+    "nome": "ALTERAR_ULTIMA_OP",
+    "descricao": "Alterar chave de controle da última operação do roteiro",
+    "tipo_condicao": "ultima_operacao",
+    "condicao_valor": null,
+    "condicoes_multiplas": [],
+    "operador_logico": "E",
+    "acao": "alterar_chave_controle",
+    "acao_valor": "ZP99",
+    "ativo": true,
+    "data_criacao": "2025-10-09T14:30:00Z",
+    "data_modificacao": "2025-10-09T14:30:00Z"
+  }
+}
+
+POST /orbis/regras - Criar nova regra com múltiplas condições
+* Descrição: Cria uma nova regra de pós-cálculo no sistema.
+* Body (JSON):
+{
+  "nome": "REMOVER_OPERACAO_DOBRA_SIMPLES",
+  "descricao": "Remove operação de dobra quando qtd_dobras <= 2 e espessura < 1.0mm",
+  "tipo_condicao": "multiplas",
+  "condicao_valor": null,
+  "condicoes_multiplas": [
+    {
+      "parametro": "qtd_dobras",
+      "operador": "<=",
+      "valor": "2"
+    },
+    {
+      "parametro": "espessura_chapa",
+      "operador": "<",
+      "valor": "1.0"
+    }
+  ],
+  "operador_logico": "E",
+  "acao": "remover_operacao",
+  "acao_valor": "DA101",
+  "ativo": true
+}
+
+* Retorno 201:
+{
+  "success": true,
+  "data": {
+    "id": 12,
+    "nome": "REMOVER_OPERACAO_DOBRA_SIMPLES",
+    "descricao": "Remove operação de dobra quando qtd_dobras <= 2 e espessura < 1.0mm",
+    "tipo_condicao": "multiplas",
+    "condicao_valor": null,
+    "condicoes_multiplas": [
+      {
+        "parametro": "qtd_dobras",
+        "operador": "<=",
+        "valor": "2"
+      },
+      {
+        "parametro": "espessura_chapa",
+        "operador": "<",
+        "valor": "1.0"
+      }
+    ],
+    "operador_logico": "E",
+    "acao": "remover_operacao",
+    "acao_valor": "DA101",
+    "ativo": true,
+    "data_criacao": "2025-10-09T14:35:00Z",
+    "data_modificacao": "2025-10-09T14:35:00Z"
+  }
+}
+
+PUT /orbis/regras/:id - Atualizar regra existente
+* Descrição: Atualiza dados de uma regra existente identificada pelo ID
+* URL Parameter: id (obrigatório)
+* Body (JSON):
+{
+  "descricao": "Alterar chave de controle da última operação (atualizada)",
+  "acao_valor": "ZP98"
+}
+* Retorno 200:
+{
+  "success": true,
+  "data": {
+    "id": 11,
+    "nome": "ALTERAR_ULTIMA_OP",
+    "descricao": "Alterar chave de controle da última operação (atualizada)",
+    "tipo_condicao": "ultima_operacao",
+    "condicao_valor": null,
+    "condicoes_multiplas": [],
+    "operador_logico": "E",
+    "acao": "alterar_chave_controle",
+    "acao_valor": "ZP98",
+    "ativo": true,
+    "data_criacao": "2025-10-09T14:30:00Z",
+    "data_modificacao": "2025-10-09T16:10:00Z"
+  }
+}
+* Retorno 404: {"success": false, "error": "Regra não encontrada"}
+* Retorno 409: {"success": false, "error": "Já existe uma regra com este nome"}
+
+PATCH /orbis/regras/:id/desativar - Desativar regra
+* Descrição: Soft delete - marca ativo = 0 (mantém registro no banco)
+* URL Parameter: id (obrigatório)
+* Retorno 200:
+{
+  "success": true,
+  "message": "Regra desativada com sucesso",
+  "data": {
+    "id": 11,
+    "ativo": false
+  }
+}
+
+PATCH /orbis/regras/:id/ativar - Reativar regra
+* Descrição: Marca ativo = 1 (reativa tabela desativada)
+* URL Parameter: id (obrigatório)
+* Retorno 200:
+{
+  "success": true,
+  "message": "Regra ativada com sucesso",
+  "data": {
+    "id": 15,
+    "ativo": true
+  }
+}
+
+DELETE /orbis/regras/:id - Excluir regra permanentemente
+* Descrição: DELETE físico - remove registro do banco definitivamente
+* URL Parameter: id (obrigatório)
+* Retorno 200:
+{
+  "success": true,
+  "message": "Regra excluída permanentemente"
+}
+* Retorno 404: {"success": false, "error": "Regras não encontrada"}
+
+7 API – DADOS DE SAÍDA
+
+GET /orbis/regras – Listar regras
+* Descrição: Retorna lista de todas as regras
+* Parâmetros: filtros opcionais
+* Retorno: coleção de tabelas de coeficientes.
+
+GET /orbis/regras/:id – Buscar regra por ID
+* Descrição: Retorna uma regra específica pelo ID
+* Retorno 200: Objeto único de regra
+* Retorno 404: {"success": false, "error": "Regra não encontrada"}
+GET /orbis/regras/nome/:nome – Buscar regra por nome
+* Descrição: Retorna uma regra específica pelo nome
+* Retorno 200: Objeto único de regra
+* Retorno 404: {"success": false, "error": "Regra não encontrada"}
+
+2. CATEGORIZAÇÃO DO DHIVE
+
+
+
+
+
+3. ÁREAS IMPACTADAS PELA INFORMAÇÃO
+Engenharia de Processos
+
+4. VALOR AGREGADO PARA A COMPANHIA
+* Automação: Elimina necessidade de intervenção manual em ajustes pós-cálculo
+* Flexibilidade: Permite criar regras complexas sem alteração de código
+* Rastreabilidade: Histórico completo de alterações via data_criacao/modificacao
+* Padronização: Garante aplicação consistente de lógicas de negócio
+* Manutenibilidade: Fácil criação e edição de regras pela engenharia
+* Qualidade: Reduz erros humanos em ajustes manuais
+* Migração para 3DEXPERIENCE: Remove dependência de lógicas hardcoded
+* Agilidade: Mudanças de regras sem necessidade de deploy
+5. INTEGRAÇÃO COM SISTEMA DE AUDITORIA
+Todas as operações de CREATE, UPDATE, DELETE, ACTIVATE e DEACTIVATE nesta tabela DEVEM registrar logs na tabela "logs_auditoria".
+
+1. RECEBER user_id no Body
+   Todas as requisições POST, PUT, PATCH e DELETE devem receber o campo user_id:
+   Body exemplo:
+           {
+             "nome": "...",
+             "descricao": "...",
+             "user_id": "eduardo.silva"  ? OBRIGATÓRIO
+           }
+2. CHAMAR Função de Log
+   Após cada operação bem-sucedida, chamar:
+           registrarLog(
+             tabela: 'nome_da_tabela',
+             registro_id: id_do_registro,
+             operacao: 'CREATE' | 'UPDATE' | 'DELETE' | 'ACTIVATE' | 'DEACTIVATE',
+             valores_anteriores: objeto_com_valores_antigos (NULL para CREATE),
+             valores_novos: objeto_com_valores_novos (NULL para DELETE),
+             user_id: user_id_recebido_no_body
+           );
+3. EXEMPLOS POR OPERAÇÃO
+   CREATE (POST):
+* Capturar user_id do body
+* Executar INSERT na tabela
+* Chamar: registrarLog('tabela', novo_id, 'CREATE', null, dados_inseridos, user_id)
+   UPDATE (PUT):
+*    Capturar user_id do body
+*    Buscar valores anteriores: SELECT * FROM tabela WHERE id = @id
+*    Executar UPDATE na tabela
+*    Buscar valores novos: SELECT * FROM tabela WHERE id = @id
+*    Chamar: registrarLog('tabela', id, 'UPDATE', valores_anteriores, valores_novos, user_id)
+   DELETE (DELETE):
+*    Capturar user_id do body
+*    Buscar valores anteriores: SELECT * FROM tabela WHERE id = @id
+*    Executar DELETE na tabela
+*    Chamar: registrarLog('tabela', id, 'DELETE', valores_anteriores, null, user_id)
+   ACTIVATE (PATCH /:id/ativar):
+*    Capturar user_id do body
+*    Buscar valor anterior: SELECT ativo FROM tabela WHERE id = @id
+*    Executar: UPDATE tabela SET ativo = 1 WHERE id = @id
+*    Chamar: registrarLog('tabela', id, 'ACTIVATE', {ativo: 0}, {ativo: 1}, user_id)
+   DEACTIVATE (PATCH /:id/desativar):
+*    Capturar user_id do body
+*    Buscar valor anterior: SELECT ativo FROM tabela WHERE id = @id
+*    Executar: UPDATE tabela SET ativo = 0 WHERE id = @id
+*    Chamar: registrarLog('tabela', id, 'DEACTIVATE', {ativo: 1}, {ativo: 0}, user_id)
+
+Elaboração de API
+
+
+		
+
+        DAPI - Document Application Programming Interface
+
+		
+
+

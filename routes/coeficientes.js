@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getAllRows, getRow, runQuery } = require('../database/connection');
+const { registrarLog } = require('../database/auditLog');
 
 // GET /orbis/coeficientes - Listar coeficientes
 router.get('/', async (req, res) => {
@@ -130,7 +131,7 @@ router.get('/nome/:nome', async (req, res) => {
 // POST /orbis/coeficientes - Criar novo coeficiente
 router.post('/', async (req, res) => {
   try {
-    const { nome, descricao, parametros_condicao, dados_coeficientes, tabela_sap, ativa } = req.body;
+    const { nome, descricao, parametros_condicao, dados_coeficientes, tabela_sap, ativa, user_id } = req.body;
 
     if (!nome || !parametros_condicao || !dados_coeficientes) {
       return res.status(400).json({
@@ -162,6 +163,8 @@ router.post('/', async (req, res) => {
       ativa !== undefined ? (ativa ? 1 : 0) : 1
     ]);
 
+    await registrarLog('tabelas_coeficientes', result.id, 'CREATE', null, req.body, user_id);
+
     const newRecord = await getRow('SELECT * FROM tabelas_coeficientes WHERE id = ?', [result.id]);
     const coeficiente = {
       ...newRecord,
@@ -188,7 +191,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { nome, descricao, parametros_condicao, dados_coeficientes, tabela_sap, ativa } = req.body;
+    const { nome, descricao, parametros_condicao, dados_coeficientes, tabela_sap, ativa, user_id } = req.body;
 
     const existing = await getRow('SELECT * FROM tabelas_coeficientes WHERE id = ?', [id]);
     if (!existing) {
@@ -225,6 +228,8 @@ router.put('/:id', async (req, res) => {
       id
     ]);
 
+    await registrarLog('tabelas_coeficientes', id, 'UPDATE', existing, req.body, user_id);
+
     const updatedRecord = await getRow('SELECT * FROM tabelas_coeficientes WHERE id = ?', [id]);
     const coeficiente = {
       ...updatedRecord,
@@ -251,6 +256,7 @@ router.put('/:id', async (req, res) => {
 router.patch('/:id/desativar', async (req, res) => {
   try {
     const { id } = req.params;
+    const { user_id } = req.body;
 
     const existing = await getRow('SELECT * FROM tabelas_coeficientes WHERE id = ?', [id]);
     if (!existing) {
@@ -261,6 +267,7 @@ router.patch('/:id/desativar', async (req, res) => {
     }
 
     await runQuery("UPDATE tabelas_coeficientes SET ativa = 0, data_modificacao = datetime('now') WHERE id = ?", [id]);
+    await registrarLog('tabelas_coeficientes', id, 'DEACTIVATE', { ativa: existing.ativa }, { ativa: 0 }, user_id);
 
     res.json({
       success: true,
@@ -281,6 +288,7 @@ router.patch('/:id/desativar', async (req, res) => {
 router.patch('/:id/ativar', async (req, res) => {
   try {
     const { id } = req.params;
+    const { user_id } = req.body;
 
     const existing = await getRow('SELECT * FROM tabelas_coeficientes WHERE id = ?', [id]);
     if (!existing) {
@@ -291,6 +299,7 @@ router.patch('/:id/ativar', async (req, res) => {
     }
 
     await runQuery("UPDATE tabelas_coeficientes SET ativa = 1, data_modificacao = datetime('now') WHERE id = ?", [id]);
+    await registrarLog('tabelas_coeficientes', id, 'ACTIVATE', { ativa: existing.ativa }, { ativa: 1 }, user_id);
 
     res.json({
       success: true,
@@ -311,6 +320,7 @@ router.patch('/:id/ativar', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const { user_id } = req.body;
 
     const existing = await getRow('SELECT * FROM tabelas_coeficientes WHERE id = ?', [id]);
     if (!existing) {
@@ -320,6 +330,7 @@ router.delete('/:id', async (req, res) => {
       });
     }
 
+    await registrarLog('tabelas_coeficientes', id, 'DELETE', existing, null, user_id);
     await runQuery('DELETE FROM tabelas_coeficientes WHERE id = ?', [id]);
 
     res.json({

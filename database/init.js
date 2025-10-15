@@ -40,7 +40,7 @@ async function createTables() {
     await runQuery(`CREATE INDEX IF NOT EXISTS idx_etapas_ativa ON etapas(ativa)`);
     await runQuery(`CREATE INDEX IF NOT EXISTS idx_etapas_centros ON etapas(centros)`);
 
-    // Tabela rotas - Seguindo padrão SQL Server enviado para TI
+    // Tabela rotas
     await runQuery(`
       CREATE TABLE IF NOT EXISTS rotas (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,7 +59,7 @@ async function createTables() {
     await runQuery(`CREATE INDEX IF NOT EXISTS idx_rotas_ativa ON rotas(ativa)`);
     await runQuery(`CREATE INDEX IF NOT EXISTS idx_rotas_centro_prod ON rotas(centro_prod)`);
 
-    // Tabela operacoes - Seguindo padrão SQL Server enviado para TI
+    // Tabela operacoes
     await runQuery(`
       CREATE TABLE IF NOT EXISTS operacoes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -94,7 +94,7 @@ async function createTables() {
     await runQuery(`CREATE INDEX IF NOT EXISTS idx_operacoes_centro_trabalho ON operacoes(centro_trabalho)`);
     await runQuery(`CREATE INDEX IF NOT EXISTS idx_operacoes_ativo ON operacoes(ativo)`);
 
-    // Tabela tabelas_coeficientes - Seguindo padrão SQL Server enviado para TI
+    // Tabela tabelas_coeficientes
     await runQuery(`
       CREATE TABLE IF NOT EXISTS tabelas_coeficientes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -113,7 +113,7 @@ async function createTables() {
     await runQuery(`CREATE INDEX IF NOT EXISTS idx_coeficientes_ativa ON tabelas_coeficientes(ativa)`);
     await runQuery(`CREATE INDEX IF NOT EXISTS idx_coeficientes_tabela_sap ON tabelas_coeficientes(tabela_sap)`);
 
-    // Tabela regras_pos_calculo - Seguindo padrão SQL Server enviado para TI
+    // Tabela regras_pos_calculo
     await runQuery(`
       CREATE TABLE IF NOT EXISTS regras_pos_calculo (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -149,6 +149,27 @@ async function createTables() {
         data_modificacao DATETIME
       )
     `);
+
+    // Tabela logs_auditoria
+    await runQuery(`
+      CREATE TABLE IF NOT EXISTS logs_auditoria (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tabela_afetada TEXT NOT NULL,
+        registro_id TEXT NOT NULL,
+        operacao TEXT NOT NULL,
+        campos_alterados TEXT,
+        valores_anteriores TEXT,
+        valores_novos TEXT,
+        user_id TEXT NOT NULL,
+        data_operacao DATETIME DEFAULT CURRENT_TIMESTAMP,
+        observacoes TEXT
+      )
+    `);
+
+    await runQuery(`CREATE INDEX IF NOT EXISTS idx_logs_tabela_data ON logs_auditoria(tabela_afetada, data_operacao DESC)`);
+    await runQuery(`CREATE INDEX IF NOT EXISTS idx_logs_usuario_data ON logs_auditoria(user_id, data_operacao DESC)`);
+    await runQuery(`CREATE INDEX IF NOT EXISTS idx_logs_registro ON logs_auditoria(tabela_afetada, registro_id)`);
+    await runQuery(`CREATE INDEX IF NOT EXISTS idx_logs_operacao ON logs_auditoria(operacao, data_operacao DESC)`);
 
     console.log('✅ Todas as tabelas foram criadas com sucesso!');
     

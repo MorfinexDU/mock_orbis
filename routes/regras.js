@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { getAllRows, getRow, runQuery } = require('../database/connection');
+const { registrarLog } = require('../database/auditLog');
 
-// GET /orbis/regras - Listar regras
 router.get('/', async (req, res) => {
   try {
     const { page = 1, limit = 50, search, ativo } = req.query;
@@ -58,7 +58,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET /orbis/regras/:id - Buscar regra por ID
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -91,7 +90,6 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// GET /orbis/regras/nome/:nome - Buscar regra por nome
 router.get('/nome/:nome', async (req, res) => {
   try {
     const { nome } = req.params;
@@ -124,10 +122,9 @@ router.get('/nome/:nome', async (req, res) => {
   }
 });
 
-// POST /orbis/regras - Criar nova regra
 router.post('/', async (req, res) => {
   try {
-    const { nome, descricao, tipo_condicao, condicao_valor, condicoes_multiplas, operador_logico, acao, acao_valor, ativo } = req.body;
+    const { nome, descricao, tipo_condicao, condicao_valor, condicoes_multiplas, operador_logico, acao, acao_valor, ativo, user_id } = req.body;
 
     if (!nome || !tipo_condicao || !acao || !acao_valor) {
       return res.status(400).json({
@@ -162,6 +159,8 @@ router.post('/', async (req, res) => {
       ativo !== undefined ? (ativo ? 1 : 0) : 1
     ]);
 
+    await registrarLog('regras_pos_calculo', result.id, 'CREATE', null, req.body, user_id);
+
     const newRecord = await getRow('SELECT * FROM regras_pos_calculo WHERE id = ?', [result.id]);
     const regra = {
       ...newRecord,
@@ -183,11 +182,10 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT /orbis/regras/:id - Atualizar regra
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { nome, descricao, tipo_condicao, condicao_valor, condicoes_multiplas, operador_logico, acao, acao_valor, ativo } = req.body;
+    const { nome, descricao, tipo_condicao, condicao_valor, condicoes_multiplas, operador_logico, acao, acao_valor, ativo, user_id } = req.body;
 
     const existing = await getRow('SELECT * FROM regras_pos_calculo WHERE id = ?', [id]);
     if (!existing) {
@@ -227,6 +225,8 @@ router.put('/:id', async (req, res) => {
       id
     ]);
 
+    await registrarLog('regras_pos_calculo', id, 'UPDATE', existing, req.body, user_id);
+
     const updatedRecord = await getRow('SELECT * FROM regras_pos_calculo WHERE id = ?', [id]);
     const regra = {
       ...updatedRecord,
@@ -248,10 +248,10 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// PATCH /orbis/regras/:id/desativar - Desativar regra
 router.patch('/:id/desativar', async (req, res) => {
   try {
     const { id } = req.params;
+    const { user_id } = req.body;
 
     const existing = await getRow('SELECT * FROM regras_pos_calculo WHERE id = ?', [id]);
     if (!existing) {
@@ -262,6 +262,7 @@ router.patch('/:id/desativar', async (req, res) => {
     }
 
     await runQuery("UPDATE regras_pos_calculo SET ativo = 0, data_modificacao = datetime('now') WHERE id = ?", [id]);
+    await registrarLog('regras_pos_calculo', id, 'DEACTIVATE', { ativo: existing.ativo }, { ativo: 0 }, user_id);
 
     res.json({
       success: true,
@@ -278,10 +279,10 @@ router.patch('/:id/desativar', async (req, res) => {
   }
 });
 
-// PATCH /orbis/regras/:id/ativar - Ativar regra
 router.patch('/:id/ativar', async (req, res) => {
   try {
     const { id } = req.params;
+    const { user_id } = req.body;
 
     const existing = await getRow('SELECT * FROM regras_pos_calculo WHERE id = ?', [id]);
     if (!existing) {
@@ -292,6 +293,7 @@ router.patch('/:id/ativar', async (req, res) => {
     }
 
     await runQuery("UPDATE regras_pos_calculo SET ativo = 1, data_modificacao = datetime('now') WHERE id = ?", [id]);
+    await registrarLog('regras_pos_calculo', id, 'ACTIVATE', { ativo: existing.ativo }, { ativo: 1 }, user_id);
 
     res.json({
       success: true,
@@ -308,10 +310,10 @@ router.patch('/:id/ativar', async (req, res) => {
   }
 });
 
-// DELETE /orbis/regras/:id - Excluir regra
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const { user_id } = req.body;
 
     const existing = await getRow('SELECT * FROM regras_pos_calculo WHERE id = ?', [id]);
     if (!existing) {
@@ -321,6 +323,7 @@ router.delete('/:id', async (req, res) => {
       });
     }
 
+    await registrarLog('regras_pos_calculo', id, 'DELETE', existing, null, user_id);
     await runQuery('DELETE FROM regras_pos_calculo WHERE id = ?', [id]);
 
     res.json({

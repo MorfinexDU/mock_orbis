@@ -12,6 +12,7 @@ const operacoesRoutes = require('./routes/operacoes');
 const coeficientesRoutes = require('./routes/coeficientes');
 const regrasRoutes = require('./routes/regras');
 const projetosRoutes = require('./routes/projetos');
+const logsRoutes = require('./routes/logs');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -31,6 +32,7 @@ app.use('/orbis/operacoes', operacoesRoutes);
 app.use('/orbis/coeficientes', coeficientesRoutes);
 app.use('/orbis/regras', regrasRoutes);
 app.use('/orbis/projetos', projetosRoutes);
+app.use('/orbis/logs', logsRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -55,7 +57,8 @@ app.get('/orbis', (req, res) => {
       '/orbis/operacoes',
       '/orbis/coeficientes',
       '/orbis/regras',
-      '/orbis/projetos'
+      '/orbis/projetos',
+      '/orbis/logs'
     ],
     documentation: 'Ver arquivos de documentação na pasta DOCS_TI_FINAL'
   });
@@ -76,7 +79,8 @@ app.use('*', (req, res) => {
       'GET/POST/PUT/DELETE /orbis/operacoes',
       'GET/POST/PUT/DELETE /orbis/coeficientes',
       'GET/POST/PUT/DELETE /orbis/regras',
-      'GET/POST/PUT/DELETE /orbis/projetos'
+      'GET/POST/PUT/DELETE /orbis/projetos',
+      'GET /orbis/logs'
     ]
   });
 });

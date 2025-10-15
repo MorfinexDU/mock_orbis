@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getAllRows, getRow, runQuery } = require('../database/connection');
+const { registrarLog } = require('../database/auditLog');
 
 // GET /orbis/projetos - Listar projetos
 router.get('/', async (req, res) => {
@@ -155,7 +156,7 @@ router.get('/status/:status', async (req, res) => {
 // POST /orbis/projetos - Criar novo projeto
 router.post('/', async (req, res) => {
   try {
-    const { nome, descricao, responsavel, roteiro, observacoes, status } = req.body;
+    const { nome, descricao, responsavel, roteiro, observacoes, status, user_id } = req.body;
 
     // Validações
     if (!nome || !responsavel) {
@@ -206,6 +207,8 @@ router.post('/', async (req, res) => {
       roteiro: newRecord.roteiro ? JSON.parse(newRecord.roteiro) : {}
     };
 
+    await registrarLog('projetos', result.id, 'CREATE', null, projeto, user_id);
+
     res.status(201).json({
       success: true,
       data: projeto
@@ -224,7 +227,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { nome, descricao, responsavel, roteiro, observacoes, status } = req.body;
+    const { nome, descricao, responsavel, roteiro, observacoes, status, user_id } = req.body;
 
     // Verificar se projeto existe
     const existing = await getRow('SELECT * FROM projetos WHERE id = ?', [id]);
@@ -234,6 +237,11 @@ router.put('/:id', async (req, res) => {
         error: 'Projeto não encontrado'
       });
     }
+
+    const valoresAnteriores = {
+      ...existing,
+      roteiro: existing.roteiro ? JSON.parse(existing.roteiro) : {}
+    };
 
     // Verificar se nome já existe (exceto o próprio registro)
     if (nome && nome !== existing.nome) {
@@ -280,6 +288,8 @@ router.put('/:id', async (req, res) => {
       roteiro: updatedRecord.roteiro ? JSON.parse(updatedRecord.roteiro) : {}
     };
 
+    await registrarLog('projetos', id, 'UPDATE', valoresAnteriores, projeto, user_id);
+
     res.json({
       success: true,
       data: projeto
@@ -298,6 +308,7 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const { user_id } = req.body;
 
     // Verificar se projeto existe
     const existing = await getRow('SELECT * FROM projetos WHERE id = ?', [id]);
@@ -308,7 +319,13 @@ router.delete('/:id', async (req, res) => {
       });
     }
 
+    const valoresAnteriores = {
+      ...existing,
+      roteiro: existing.roteiro ? JSON.parse(existing.roteiro) : {}
+    };
+
     await runQuery('DELETE FROM projetos WHERE id = ?', [id]);
+    await registrarLog('projetos', id, 'DELETE', valoresAnteriores, null, user_id);
 
     res.json({
       success: true,

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getAllRows, getRow, runQuery } = require('../database/connection');
+const { registrarLog } = require('../database/auditLog');
 
 // GET /orbis/operacoes - Listar operações
 router.get('/', async (req, res) => {
@@ -150,7 +151,7 @@ router.post('/', async (req, res) => {
       tempo_preparacao, unidade_tempo_preparacao, formula_tempo_homem, formula_tempo_maquina,
       formula_tempo_preparacao, condicoes_aplicacao, explicacao_formula_homem,
       explicacao_formula_maquina, explicacao_formula_preparacao, regras_pos_calculo,
-      validar_rota, ativo
+      validar_rota, ativo, user_id
     } = req.body;
 
     if (!sequencia || !centro_producao || !centro_trabalho || !chave_controle || !chave_modelo || !descricao) {
@@ -185,6 +186,10 @@ router.post('/', async (req, res) => {
     ]);
 
     const newRecord = await getRow('SELECT * FROM operacoes WHERE id = ?', [result.id]);
+    
+    // Registrar log de auditoria
+    await registrarLog('operacoes', result.id, 'CREATE', null, req.body, user_id);
+
     const operacao = {
       ...newRecord,
       condicoes_aplicacao: JSON.parse(newRecord.condicoes_aplicacao),
@@ -217,7 +222,7 @@ router.put('/:id', async (req, res) => {
       tempo_preparacao, unidade_tempo_preparacao, formula_tempo_homem, formula_tempo_maquina,
       formula_tempo_preparacao, condicoes_aplicacao, explicacao_formula_homem,
       explicacao_formula_maquina, explicacao_formula_preparacao, regras_pos_calculo,
-      validar_rota, ativo
+      validar_rota, ativo, user_id
     } = req.body;
 
     const existing = await getRow('SELECT * FROM operacoes WHERE id = ?', [id]);
@@ -265,6 +270,9 @@ router.put('/:id', async (req, res) => {
       id
     ]);
 
+    // Registrar log de auditoria
+    await registrarLog('operacoes', id, 'UPDATE', existing, req.body, user_id);
+
     const updatedRecord = await getRow('SELECT * FROM operacoes WHERE id = ?', [id]);
     const operacao = {
       ...updatedRecord,
@@ -292,6 +300,7 @@ router.put('/:id', async (req, res) => {
 router.patch('/:id/desativar', async (req, res) => {
   try {
     const { id } = req.params;
+    const { user_id } = req.body;
 
     const existing = await getRow('SELECT * FROM operacoes WHERE id = ?', [id]);
     if (!existing) {
@@ -302,6 +311,9 @@ router.patch('/:id/desativar', async (req, res) => {
     }
 
     await runQuery("UPDATE operacoes SET ativo = 0, data_modificacao = datetime('now') WHERE id = ?", [id]);
+
+    // Registrar log de auditoria
+    await registrarLog('operacoes', id, 'DEACTIVATE', { ativo: existing.ativo }, { ativo: 0 }, user_id);
 
     res.json({
       success: true,
@@ -322,6 +334,7 @@ router.patch('/:id/desativar', async (req, res) => {
 router.patch('/:id/ativar', async (req, res) => {
   try {
     const { id } = req.params;
+    const { user_id } = req.body;
 
     const existing = await getRow('SELECT * FROM operacoes WHERE id = ?', [id]);
     if (!existing) {
@@ -332,6 +345,9 @@ router.patch('/:id/ativar', async (req, res) => {
     }
 
     await runQuery("UPDATE operacoes SET ativo = 1, data_modificacao = datetime('now') WHERE id = ?", [id]);
+
+    // Registrar log de auditoria
+    await registrarLog('operacoes', id, 'ACTIVATE', { ativo: existing.ativo }, { ativo: 1 }, user_id);
 
     res.json({
       success: true,
@@ -352,6 +368,7 @@ router.patch('/:id/ativar', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const { user_id } = req.body;
 
     const existing = await getRow('SELECT * FROM operacoes WHERE id = ?', [id]);
     if (!existing) {
@@ -360,6 +377,9 @@ router.delete('/:id', async (req, res) => {
         error: 'Operação não encontrada'
       });
     }
+
+    // Registrar log de auditoria antes de deletar
+    await registrarLog('operacoes', id, 'DELETE', existing, null, user_id);
 
     await runQuery('DELETE FROM operacoes WHERE id = ?', [id]);
 

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getAllRows, getRow, runQuery } = require('../database/connection');
+const { registrarLog } = require('../database/auditLog');
 
 // GET /orbis/parametros - Listar parâmetros
 router.get('/', async (req, res) => {
@@ -133,7 +134,7 @@ router.get('/nome/:nome', async (req, res) => {
 // POST /orbis/parametros - Criar novo parâmetro
 router.post('/', async (req, res) => {
   try {
-    const { nome, tipo, unidade, descricao, opcoes, valor_padrao, obrigatorio, imagem_base64 } = req.body;
+    const { nome, tipo, unidade, descricao, opcoes, valor_padrao, obrigatorio, imagem_base64, user_id } = req.body;
 
     // Validações
     if (!nome || !tipo) {
@@ -177,6 +178,8 @@ router.post('/', async (req, res) => {
       obrigatorio: Boolean(newRecord.obrigatorio)
     };
 
+    await registrarLog('parametros_processo', result.id, 'CREATE', null, parametro, user_id);
+
     res.status(201).json({
       success: true,
       data: parametro
@@ -195,7 +198,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { nome, tipo, unidade, descricao, opcoes, valor_padrao, obrigatorio, imagem_base64 } = req.body;
+    const { nome, tipo, unidade, descricao, opcoes, valor_padrao, obrigatorio, imagem_base64, user_id } = req.body;
 
     // Verificar se parâmetro existe
     const existing = await getRow('SELECT * FROM parametros_processo WHERE id = ?', [id]);
@@ -205,6 +208,12 @@ router.put('/:id', async (req, res) => {
         error: 'Parâmetro não encontrado'
       });
     }
+
+    const valoresAnteriores = {
+      ...existing,
+      opcoes: existing.opcoes ? JSON.parse(existing.opcoes) : null,
+      obrigatorio: Boolean(existing.obrigatorio)
+    };
 
     // Verificar se nome já existe (exceto o próprio registro)
     if (nome && nome !== existing.nome) {
@@ -244,6 +253,8 @@ router.put('/:id', async (req, res) => {
       obrigatorio: Boolean(updatedRecord.obrigatorio)
     };
 
+    await registrarLog('parametros_processo', id, 'UPDATE', valoresAnteriores, parametro, user_id);
+
     res.json({
       success: true,
       data: parametro
@@ -262,6 +273,7 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const { user_id } = req.body;
 
     // Verificar se parâmetro existe
     const existing = await getRow('SELECT * FROM parametros_processo WHERE id = ?', [id]);
@@ -272,7 +284,14 @@ router.delete('/:id', async (req, res) => {
       });
     }
 
+    const valoresAnteriores = {
+      ...existing,
+      opcoes: existing.opcoes ? JSON.parse(existing.opcoes) : null,
+      obrigatorio: Boolean(existing.obrigatorio)
+    };
+
     await runQuery('DELETE FROM parametros_processo WHERE id = ?', [id]);
+    await registrarLog('parametros_processo', id, 'DELETE', valoresAnteriores, null, user_id);
 
     res.json({
       success: true,
