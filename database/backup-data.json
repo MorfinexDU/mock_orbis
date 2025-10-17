@@ -1,0 +1,248 @@
+{
+  "timestamp": "2025-10-17T16:46:08.605Z",
+  "tables": {
+    "parametros_processo": [
+      {
+        "id": 11,
+        "nome": "espessura",
+        "tipo": "numero_decimal",
+        "unidade": "mm",
+        "descricao": "Espessura de chapa",
+        "opcoes": null,
+        "valor_padrao": null,
+        "obrigatorio": 0,
+        "imagem_base64": null,
+        "data_criacao": "2025-10-15 20:02:51",
+        "data_modificacao": "2025-10-17 12:06:21"
+      },
+      {
+        "id": 12,
+        "nome": "perimetro",
+        "tipo": "numero",
+        "unidade": "mm",
+        "descricao": "Perímetro da peça",
+        "opcoes": null,
+        "valor_padrao": null,
+        "obrigatorio": 0,
+        "imagem_base64": null,
+        "data_criacao": "2025-10-17 12:46:49",
+        "data_modificacao": null
+      }
+    ],
+    "etapas": [
+      {
+        "id": 9,
+        "nome": "CORTE LASER",
+        "descricao": "Cortar com máquina laser",
+        "centros": "MP10",
+        "centros_trabalho": "[\"MA303\",\"MA305\"]",
+        "parametros_necessarios": "[\"perimetro\"]",
+        "ativa": 1,
+        "data_criacao": "2025-10-15 20:07:42",
+        "data_modificacao": "2025-10-17 16:40:42"
+      },
+      {
+        "id": 10,
+        "nome": "DESTAQUE",
+        "descricao": "Destaque de chapa",
+        "centros": "MP10",
+        "centros_trabalho": "[\"DE101\"]",
+        "parametros_necessarios": "[\"espessura\",\"perimetro\"]",
+        "ativa": 1,
+        "data_criacao": "2025-10-17 12:51:16",
+        "data_modificacao": "2025-10-17 12:51:16"
+      },
+      {
+        "id": 14,
+        "nome": "CORTE LASER 2",
+        "descricao": "Corte laser MP12",
+        "centros": "MP12",
+        "centros_trabalho": "[\"MA313\"]",
+        "parametros_necessarios": "[\"espessura\",\"perimetro\"]",
+        "ativa": 1,
+        "data_criacao": "2025-10-17 13:42:20",
+        "data_modificacao": "2025-10-17 13:42:20"
+      }
+    ],
+    "rotas": [
+      {
+        "id": 8,
+        "nome": "CORTE LASER",
+        "descricao": "Rota para cortar chapas na laser",
+        "ativa": 1,
+        "data_criacao": "2025-10-17 13:14:10",
+        "data_modificacao": "2025-10-17 13:14:10",
+        "centro_prod": "MP10",
+        "etapas": "[9]"
+      },
+      {
+        "id": 9,
+        "nome": "CORTE LASER → DESTAQUE",
+        "descricao": "Rota de corte chapa e destaque",
+        "ativa": 1,
+        "data_criacao": "2025-10-17 13:23:18",
+        "data_modificacao": "2025-10-17 16:15:32",
+        "centro_prod": "MP10, MP12",
+        "etapas": "[9,10]"
+      },
+      {
+        "id": 10,
+        "nome": "CORTE LASER 2",
+        "descricao": "Corte laser do MP12",
+        "ativa": 1,
+        "data_criacao": "2025-10-17 13:43:36",
+        "data_modificacao": "2025-10-17 13:43:36",
+        "centro_prod": "MP12",
+        "etapas": "[14]"
+      }
+    ],
+    "operacoes": [
+      {
+        "id": 5,
+        "sequencia": "1",
+        "centro_producao": "MP10",
+        "centro_trabalho": "MA303",
+        "chave_controle": "ZP00",
+        "chave_modelo": "300",
+        "descricao": "Corte laser chapa",
+        "tempo_homem": 0.5,
+        "unidade_tempo_homem": "MIN",
+        "tempo_maquina": 0,
+        "unidade_tempo_maquina": "MIN",
+        "tempo_preparacao": 0,
+        "unidade_tempo_preparacao": "MIN",
+        "formula_tempo_homem": "tempo_base * perimetro",
+        "formula_tempo_maquina": "tempo_base",
+        "formula_tempo_preparacao": "tempo_base",
+        "condicoes_aplicacao": "[{\"parametro\":\"perimetro\",\"operador\":\">\",\"valor\":\"0\"}]",
+        "ativo": 1,
+        "data_criacao": "2025-10-17 13:53:39",
+        "data_modificacao": "2025-10-17 16:08:14",
+        "regras_pos_calculo": "[{\"idRegraConfigurada\":5,\"nomeRegraConfigurada\":\"ALTERAR_CTTRAB_LASERCHAPA\",\"id_regra_configurada\":5,\"nome_regra\":\"ALTERAR_CTTRAB_LASERCHAPA\"},{\"idRegraConfigurada\":7,\"nomeRegraConfigurada\":\"ALTERA_CT_TRAB2\",\"id_regra_configurada\":7,\"nome_regra\":\"ALTERA_CT_TRAB2\"}]",
+        "validar_rota": 1,
+        "explicacao_formula_homem": "",
+        "explicacao_formula_maquina": "",
+        "explicacao_formula_preparacao": ""
+      },
+      {
+        "id": 6,
+        "sequencia": "1",
+        "centro_producao": "MP10",
+        "centro_trabalho": "DE101",
+        "chave_controle": "ZP00",
+        "chave_modelo": "145",
+        "descricao": "Destaque de peças",
+        "tempo_homem": 1,
+        "unidade_tempo_homem": "MIN",
+        "tempo_maquina": 0,
+        "unidade_tempo_maquina": "MIN",
+        "tempo_preparacao": 0,
+        "unidade_tempo_preparacao": "MIN",
+        "formula_tempo_homem": "tempo_base * espessura",
+        "formula_tempo_maquina": "tempo_base",
+        "formula_tempo_preparacao": "tempo_base",
+        "condicoes_aplicacao": "[{\"parametro\":\"espessura\",\"operador\":\">\",\"valor\":\"0\"},{\"parametro\":\"perimetro\",\"operador\":\">\",\"valor\":\"0\"}]",
+        "ativo": 1,
+        "data_criacao": "2025-10-17 13:54:23",
+        "data_modificacao": "2025-10-17 14:15:50",
+        "regras_pos_calculo": "[{\"idRegraConfigurada\":1,\"nomeRegraConfigurada\":\"ALTERAR_ULTIMA_OP\",\"id_regra_configurada\":1,\"nome_regra\":\"ALTERAR_ULTIMA_OP\"}]",
+        "validar_rota": 1,
+        "explicacao_formula_homem": "",
+        "explicacao_formula_maquina": "",
+        "explicacao_formula_preparacao": ""
+      }
+    ],
+    "tabelas_coeficientes": [
+      {
+        "id": 1,
+        "nome": "corte_laser",
+        "descricao": "Tabela para coeficientes de corte laser chapa",
+        "parametros_condicao": "[{\"nome\":\"material\",\"operador\":\"==\",\"tipo\":\"texto\"},{\"nome\":\"espessura_chapa\",\"operador\":\"==\",\"tipo\":\"numero_decimal\"}]",
+        "dados_coeficientes": "[{\"material\":\"ALUZINC\",\"espessura_chapa\":\"0.35\",\"coeficiente\":\"0.00011675840000000\"},{\"material\":\"ALUZINC\",\"espessura_chapa\":\"0.75\",\"coeficiente\":\"0.00004086540000000\"},{\"material\":\"AÇO GALVANIZADO\",\"espessura_chapa\":\"0.55\",\"coeficiente\":\"0.00003669830000000\"}]",
+        "tabela_sap": "Z_COEF_LASER_001",
+        "ativa": 1,
+        "data_criacao": "2025-10-15 19:57:23",
+        "data_modificacao": "2025-10-15 19:57:23"
+      },
+      {
+        "id": 2,
+        "nome": "dobra_chapa",
+        "descricao": "Tabela para coeficientes de dobra de chapa",
+        "parametros_condicao": "[{\"nome\":\"material\",\"operador\":\"==\",\"tipo\":\"texto\"},{\"nome\":\"espessura_chapa\",\"operador\":\"ENTRE\",\"tipo\":\"numero_decimal\"}]",
+        "dados_coeficientes": "[{\"material\":\"AÇO CARBONO\",\"espessura_chapa\":\"0.5-2.0\",\"coeficiente\":\"1.2\"},{\"material\":\"AÇO INOX\",\"espessura_chapa\":\"0.5-2.0\",\"coeficiente\":\"1.5\"},{\"material\":\"ALUMÍNIO\",\"espessura_chapa\":\"0.5-3.0\",\"coeficiente\":\"0.8\"}]",
+        "tabela_sap": "Z_COEF_DOBRA_001",
+        "ativa": 1,
+        "data_criacao": "2025-10-15 19:57:23",
+        "data_modificacao": "2025-10-15 19:57:23"
+      }
+    ],
+    "regras_pos_calculo": [
+      {
+        "id": 1,
+        "nome": "ALTERAR_ULTIMA_OP",
+        "descricao": "Alterar chave de controle da última operação do roteiro",
+        "tipo_condicao": "ultima_operacao",
+        "condicao_valor": null,
+        "condicoes_multiplas": "[]",
+        "operador_logico": "E",
+        "acao": "alterar_chave_controle",
+        "acao_valor": "ZP99",
+        "ativo": 1,
+        "data_criacao": "2025-10-15 19:57:23",
+        "data_modificacao": "2025-10-15 19:57:23"
+      },
+      {
+        "id": 5,
+        "nome": "ALTERAR_CTTRAB_LASERCHAPA",
+        "descricao": "Variar centro de trabalho da laser chapa.",
+        "tipo_condicao": "multiplas_regras",
+        "condicao_valor": null,
+        "condicoes_multiplas": "[{\"condicao\":\"parametro_valor\",\"acao\":\"alterar_centro_trabalho\",\"acao_valor\":\"MA305\",\"parametroNome\":\"perimetro\",\"condicaoValor\":\">4\"}]",
+        "operador_logico": "E",
+        "acao": "multiplas_regras",
+        "acao_valor": "multiplas_regras",
+        "ativo": 1,
+        "data_criacao": "2025-10-17 15:48:11",
+        "data_modificacao": "2025-10-17 15:57:15"
+      },
+      {
+        "id": 7,
+        "nome": "ALTERA_CT_TRAB2",
+        "descricao": "Altera CtTrab",
+        "tipo_condicao": "parametro_valor",
+        "condicao_valor": "perimetro=21",
+        "condicoes_multiplas": "[]",
+        "operador_logico": "E",
+        "acao": "alterar_centro_trabalho",
+        "acao_valor": "MA300",
+        "ativo": 1,
+        "data_criacao": "2025-10-17 16:07:54",
+        "data_modificacao": "2025-10-17 16:07:54"
+      }
+    ],
+    "projetos": [
+      {
+        "id": 7,
+        "nome": "TESTE1",
+        "parametros": "{\"espessura\":\"10\"}",
+        "roteiro": "{\"operacoes\":[{\"operacao\":\"0010\",\"centro_producao\":\"MP10\",\"centro_trabalho\":\"MA303\",\"chave_controle\":\"ZP11\",\"chave_modelo\":\"174\",\"descricao\":\"Corte laser chapa\",\"tempo_homem\":0.06,\"tempo_maquina\":0.006,\"tempo_preparacao\":3,\"unidade\":\"MIN\",\"detalhes_calculo\":{\"tempo_homem\":{\"tipo\":\"homem\",\"tempoBase\":0.006,\"formulaOriginal\":\"espessura*tempo_base\",\"formulaCalculada\":\"10*0.006\",\"parametrosUsados\":{\"espessura\":10},\"coeficientesUsados\":{},\"resultado\":0.06},\"tempo_maquina\":{\"tipo\":\"maquina\",\"tempoBase\":0.006,\"formulaOriginal\":\"perimetro*COEF(corte_laser)+0.014\",\"formulaCalculada\":\"perimetro*1+0.014\",\"parametrosUsados\":{},\"coeficientesUsados\":{\"corte_laser\":{\"valor\":1,\"parametros_usados\":{}}},\"resultado\":0.006,\"erro\":\"Expressão contém caracteres inválidos: perimetro*1+0.014\"},\"tempo_preparacao\":{\"tipo\":\"preparacao\",\"tempoBase\":3,\"formulaOriginal\":\"tempo_base * espessura_chapa\",\"formulaCalculada\":\"3 * espessura_chapa\",\"parametrosUsados\":{\"espessura\":10},\"coeficientesUsados\":{},\"resultado\":3,\"erro\":\"Expressão contém caracteres inválidos: 3*espessura_chapa\"}}}],\"totais\":{\"tempo_homem\":0.06,\"tempo_maquina\":0.006,\"tempo_preparacao\":3,\"operacoes\":1}}",
+        "data_criacao": "2025-10-16 14:16:15",
+        "data_modificacao": "2025-10-16 14:26:47",
+        "centro": "MP10",
+        "rota": "CORTE",
+        "idrota": "7"
+      },
+      {
+        "id": 8,
+        "nome": "SÓDESTAQUE",
+        "parametros": "{\"espessura\":\"17\"}",
+        "roteiro": "{\"operacoes\":[{\"operacao\":\"0010\",\"centro_producao\":\"MP10\",\"centro_trabalho\":\"MA303\",\"chave_controle\":\"ZP11\",\"chave_modelo\":\"174\",\"descricao\":\"Corte laser chapa\",\"tempo_homem\":0.084,\"tempo_maquina\":0.006,\"tempo_preparacao\":3,\"unidade\":\"MIN\",\"detalhes_calculo\":{\"tempo_homem\":{\"tipo\":\"homem\",\"tempoBase\":0.006,\"formulaOriginal\":\"espessura*tempo_base\",\"formulaCalculada\":\"14*0.006\",\"parametrosUsados\":{\"espessura\":14},\"coeficientesUsados\":{},\"resultado\":0.084},\"tempo_maquina\":{\"tipo\":\"maquina\",\"tempoBase\":0.006,\"formulaOriginal\":\"perimetro*COEF(corte_laser)+0.014\",\"formulaCalculada\":\"perimetro*1+0.014\",\"parametrosUsados\":{},\"coeficientesUsados\":{\"corte_laser\":{\"valor\":1,\"parametros_usados\":{}}},\"resultado\":0.006,\"erro\":\"Expressão contém caracteres inválidos: perimetro*1+0.014\"},\"tempo_preparacao\":{\"tipo\":\"preparacao\",\"tempoBase\":3,\"formulaOriginal\":\"tempo_base * espessura_chapa\",\"formulaCalculada\":\"3 * espessura_chapa\",\"parametrosUsados\":{\"espessura\":14},\"coeficientesUsados\":{},\"resultado\":3,\"erro\":\"Expressão contém caracteres inválidos: 3*espessura_chapa\"}}}],\"totais\":{\"tempo_homem\":0.084,\"tempo_maquina\":0.006,\"tempo_preparacao\":3,\"operacoes\":1}}",
+        "data_criacao": "2025-10-16 15:42:18",
+        "data_modificacao": "2025-10-16 15:45:39",
+        "centro": "MP10",
+        "rota": "CORTE",
+        "idrota": "7"
+      }
+    ]
+  }
+}

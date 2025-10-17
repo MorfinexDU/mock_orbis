@@ -8,7 +8,9 @@
     "dev": "nodemon server.js",
     "init-db": "node scripts/initDatabase.js",
     "seed-db": "node scripts/seedDatabase.js",
-    "reset-db": "node scripts/resetDatabase.js"
+    "reset-db": "node scripts/resetDatabase.js",
+    "backup": "node backup-data.js",
+    "restore": "node restore-data.js"
   },
   "keywords": ["orbis", "api", "express", "sqlite", "mock"],
   "author": "Eduardo Arvid",

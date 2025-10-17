@@ -122,7 +122,6 @@ async function seedDatabase() {
       {
         nome: 'CORTE LASER -> DOBRA -> MONTAGEM',
         descricao: 'Rota para peças cortadas em laser com dobra e montagem',
-        sequencia_centros: 'MA303,DB201,MT301',
         centro_prod: 'MP10',
         etapas: JSON.stringify([1, 3, 4]),
         ativa: 1
@@ -130,7 +129,6 @@ async function seedDatabase() {
       {
         nome: 'CORTE LASER -> DESTAQUE',
         descricao: 'Rota simples para peças que precisam apenas de corte e destaque',
-        sequencia_centros: 'MA303,DE101',
         centro_prod: 'MP10',
         etapas: JSON.stringify([1, 2]),
         ativa: 1
@@ -138,7 +136,6 @@ async function seedDatabase() {
       {
         nome: 'PROCESSO COMPLETO',
         descricao: 'Rota completa com todas as etapas de produção',
-        sequencia_centros: 'MA303,DE101,DB201,MT301',
         centro_prod: 'MP10',
         etapas: JSON.stringify([1, 2, 3, 4]),
         ativa: 1
@@ -148,9 +145,9 @@ async function seedDatabase() {
     for (const rota of rotas) {
       await runQuery(`
         INSERT OR IGNORE INTO rotas 
-        (nome, descricao, sequencia_centros, centro_prod, etapas, ativa, data_criacao)
-        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-      `, [rota.nome, rota.descricao, rota.sequencia_centros, rota.centro_prod, rota.etapas, rota.ativa]);
+        (nome, descricao, centro_prod, etapas, ativa, data_criacao)
+        VALUES (?, ?, ?, ?, ?, datetime('now'))
+      `, [rota.nome, rota.descricao, rota.centro_prod, rota.etapas, rota.ativa]);
     }
 
     // Dados para operacoes - Seguindo novo padrão SQL Server
@@ -316,44 +313,76 @@ async function seedDatabase() {
     // Dados para projetos
     const projetos = [
       {
-        nome: 'Projeto Piloto - Peças Automotivas',
-        descricao: 'Projeto piloto para produção de componentes automotivos',
-        responsavel: 'João Silva',
-        roteiro: JSON.stringify({
-          rotas: [
-            { rota_id: 1, sequencia: 1, quantidade: 50 },
-            { rota_id: 2, sequencia: 2, quantidade: 10 }
-          ],
-          configuracoes_globais: {
-            prazo_entrega: '2024-02-15',
-            nivel_qualidade: 'Alto'
-          }
+        nome: 'Chapa_Dobrada_500x300',
+        parametros: JSON.stringify({
+          espessura_chapa: '0.35',
+          material: 'ALUZINC',
+          perimetro: '505',
+          peso_peca: '15',
+          pokayoke: 'NÃO',
+          qtd_aletas: '1',
+          qtd_dobras: '2',
+          qtd_recortes_laserchapa: '1',
+          tamanho_peca: '240'
         }),
-        status: 'Em Andamento'
+        roteiro: JSON.stringify({
+          etapas: [
+            {
+              nome: 'CORTE LASER',
+              operacoes: [
+                { id: 1, descricao: 'Corte laser chapa', tempo_homem: 0.059, tempo_maquina: 0.059, tempo_preparacao: 1.05, unidade: 'MIN' }
+              ]
+            },
+            {
+              nome: 'DESTAQUE',
+              operacoes: [
+                { id: 2, descricao: 'Destaque de peças', tempo_homem: 0.12, tempo_maquina: 0, tempo_preparacao: 0, unidade: 'MIN' }
+              ]
+            }
+          ],
+          tempo_total_homem: 0.179,
+          tempo_total_maquina: 0.059,
+          tempo_total_preparacao: 1.05
+        }),
+        centro: 'MP10',
+        rota: 'LASER CHAPA, DESTAQUE, DOBRADEIRA',
+        idrota: '2'
       },
       {
-        nome: 'Desenvolvimento de Novo Processo',
-        descricao: 'Desenvolvimento de processo para peças de precisão',
-        responsavel: 'Maria Santos',
-        roteiro: JSON.stringify({
-          rotas: [
-            { rota_id: 1, sequencia: 1, quantidade: 5 }
-          ],
-          configuracoes_globais: {
-            prazo_entrega: '2024-03-01',
-            nivel_qualidade: 'Muito Alto'
-          }
+        nome: 'Peca_Complexa_Aluminio',
+        parametros: JSON.stringify({
+          espessura_chapa: '1.5',
+          material: 'ALUMÍNIO',
+          perimetro: '850',
+          peso_peca: '25',
+          qtd_dobras: '4',
+          qtd_recortes_laserchapa: '3'
         }),
-        status: 'Planejamento'
+        roteiro: JSON.stringify({
+          etapas: [
+            {
+              nome: 'CORTE LASER',
+              operacoes: [
+                { id: 1, descricao: 'Corte laser chapa', tempo_homem: 0.095, tempo_maquina: 0.095, tempo_preparacao: 1.5, unidade: 'MIN' }
+              ]
+            }
+          ],
+          tempo_total_homem: 0.095,
+          tempo_total_maquina: 0.095,
+          tempo_total_preparacao: 1.5
+        }),
+        centro: 'MP10',
+        rota: 'PROCESSO COMPLETO',
+        idrota: '3'
       }
     ];
 
     for (const projeto of projetos) {
       await runQuery(`
         INSERT OR IGNORE INTO projetos 
-        (nome, descricao, responsavel, roteiro, status, data_criacao)
-        VALUES (?, ?, ?, ?, ?, datetime('now'))
-      `, [projeto.nome, projeto.descricao, projeto.responsavel, projeto.roteiro, projeto.status]);
+        (nome, parametros, roteiro, centro, rota, idrota, data_criacao)
+        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+      `, [projeto.nome, projeto.parametros, projeto.roteiro, projeto.centro, projeto.rota, projeto.idrota]);
     }
 
     console.log('✅ Banco de dados populado com dados de exemplo!');

@@ -46,7 +46,6 @@ async function createTables() {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         nome TEXT NOT NULL UNIQUE,
         descricao TEXT,
-        sequencia_centros TEXT NOT NULL,
         ativa INTEGER DEFAULT 1,
         data_criacao DATETIME DEFAULT CURRENT_TIMESTAMP,
         data_modificacao DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -140,15 +139,20 @@ async function createTables() {
       CREATE TABLE IF NOT EXISTS projetos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         nome TEXT NOT NULL UNIQUE,
-        descricao TEXT,
-        responsavel TEXT NOT NULL,
+        parametros TEXT NOT NULL,
         roteiro TEXT,
-        observacoes TEXT,
-        status TEXT DEFAULT 'Planejamento',
         data_criacao DATETIME DEFAULT CURRENT_TIMESTAMP,
-        data_modificacao DATETIME
+        data_modificacao DATETIME DEFAULT CURRENT_TIMESTAMP,
+        centro TEXT,
+        rota TEXT,
+        idrota TEXT
       )
     `);
+
+    await runQuery(`CREATE INDEX IF NOT EXISTS idx_projetos_nome ON projetos(nome)`);
+    await runQuery(`CREATE INDEX IF NOT EXISTS idx_projetos_centro ON projetos(centro)`);
+    await runQuery(`CREATE INDEX IF NOT EXISTS idx_projetos_idrota ON projetos(idrota)`);
+    await runQuery(`CREATE INDEX IF NOT EXISTS idx_projetos_data_criacao ON projetos(data_criacao)`);
 
     // Tabela logs_auditoria
     await runQuery(`

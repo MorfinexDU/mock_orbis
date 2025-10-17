@@ -51,11 +51,11 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { nome, descricao, sequencia_centros, centro_prod, etapas, ativa = true, user_id } = req.body;
-    if (!nome || !sequencia_centros || !etapas) return res.status(400).json({success: false, error: 'Campos obrigatórios: nome, sequencia_centros, etapas'});
+    const { nome, descricao, centro_prod, etapas, ativa = true, user_id } = req.body;
+    if (!nome || !etapas) return res.status(400).json({success: false, error: 'Campos obrigatórios: nome, etapas'});
     const existing = await getRow('SELECT id FROM rotas WHERE nome = ?', [nome]);
     if (existing) return res.status(409).json({success: false, error: 'Já existe uma rota com este nome'});
-    const result = await runQuery(`INSERT INTO rotas (nome, descricao, sequencia_centros, centro_prod, etapas, ativa, data_criacao, data_modificacao) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`, [nome, descricao || null, sequencia_centros, centro_prod || null, JSON.stringify(etapas), ativa ? 1 : 0]);
+    const result = await runQuery(`INSERT INTO rotas (nome, descricao, centro_prod, etapas, ativa, data_criacao, data_modificacao) VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`, [nome, descricao || null, centro_prod || null, JSON.stringify(etapas), ativa ? 1 : 0]);
     await registrarLog('rotas', result.id, 'CREATE', null, req.body, user_id);
     const newRecord = await getRow('SELECT * FROM rotas WHERE id = ?', [result.id]);
     const rota = {...newRecord, etapas: newRecord.etapas ? JSON.parse(newRecord.etapas) : [], ativa: Boolean(newRecord.ativa)};
@@ -69,14 +69,14 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { nome, descricao, sequencia_centros, centro_prod, etapas, ativa, user_id } = req.body;
+    const { nome, descricao, centro_prod, etapas, ativa, user_id } = req.body;
     const existing = await getRow('SELECT * FROM rotas WHERE id = ?', [id]);
     if (!existing) return res.status(404).json({success: false, error: 'Rota não encontrada'});
     if (nome && nome !== existing.nome) {
       const nameExists = await getRow('SELECT id FROM rotas WHERE nome = ? AND id != ?', [nome, id]);
       if (nameExists) return res.status(409).json({success: false, error: 'Já existe uma rota com este nome'});
     }
-    await runQuery(`UPDATE rotas SET nome = ?, descricao = ?, sequencia_centros = ?, centro_prod = ?, etapas = ?, ativa = ?, data_modificacao = datetime('now') WHERE id = ?`, [nome || existing.nome, descricao !== undefined ? descricao : existing.descricao, sequencia_centros || existing.sequencia_centros, centro_prod !== undefined ? centro_prod : existing.centro_prod, etapas !== undefined ? JSON.stringify(etapas) : existing.etapas, ativa !== undefined ? (ativa ? 1 : 0) : existing.ativa, id]);
+    await runQuery(`UPDATE rotas SET nome = ?, descricao = ?, centro_prod = ?, etapas = ?, ativa = ?, data_modificacao = datetime('now') WHERE id = ?`, [nome || existing.nome, descricao !== undefined ? descricao : existing.descricao, centro_prod !== undefined ? centro_prod : existing.centro_prod, etapas !== undefined ? JSON.stringify(etapas) : existing.etapas, ativa !== undefined ? (ativa ? 1 : 0) : existing.ativa, id]);
     await registrarLog('rotas', id, 'UPDATE', existing, req.body, user_id);
     const updatedRecord = await getRow('SELECT * FROM rotas WHERE id = ?', [id]);
     const rota = {...updatedRecord, etapas: updatedRecord.etapas ? JSON.parse(updatedRecord.etapas) : [], ativa: Boolean(updatedRecord.ativa)};

@@ -6,43 +6,44 @@ const { registrarLog } = require('../database/auditLog');
 // GET /orbis/projetos - Listar projetos
 router.get('/', async (req, res) => {
   try {
-    const { page = 1, limit = 50, search, status } = req.query;
+    const { page = 1, limit = 50, search, centro, idrota } = req.query;
     const offset = (page - 1) * limit;
 
     let query = 'SELECT * FROM projetos WHERE 1=1';
     let countQuery = 'SELECT COUNT(*) as total FROM projetos WHERE 1=1';
     let params = [];
 
-    // Filtros
     if (search) {
-      query += ' AND (nome LIKE ? OR descricao LIKE ? OR responsavel LIKE ?)';
-      countQuery += ' AND (nome LIKE ? OR descricao LIKE ? OR responsavel LIKE ?)';
-      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      query += ' AND nome LIKE ?';
+      countQuery += ' AND nome LIKE ?';
+      params.push(`%${search}%`);
     }
 
-    if (status) {
-      query += ' AND status = ?';
-      countQuery += ' AND status = ?';
-      params.push(status);
+    if (centro) {
+      query += ' AND centro = ?';
+      countQuery += ' AND centro = ?';
+      params.push(centro);
     }
 
-    // Ordenação e paginação
+    if (idrota) {
+      query += ' AND idrota = ?';
+      countQuery += ' AND idrota = ?';
+      params.push(idrota);
+    }
+
     query += ' ORDER BY data_criacao DESC LIMIT ? OFFSET ?';
     params.push(parseInt(limit), parseInt(offset));
 
     const [rows, countResult] = await Promise.all([
       getAllRows(query, params),
-      getRow(countQuery, params.slice(0, -2)) // Remove limit e offset do count
+      getRow(countQuery, params.slice(0, -2))
     ]);
 
-    // Parse JSON fields
     const projetos = rows.map(row => ({
       ...row,
+      parametros: row.parametros ? JSON.parse(row.parametros) : {},
       roteiro: row.roteiro ? JSON.parse(row.roteiro) : {}
     }));
-
-    const total = countResult.total;
-    const totalPages = Math.ceil(total / limit);
 
     res.json({
       success: true,
@@ -50,17 +51,13 @@ router.get('/', async (req, res) => {
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
-        total,
-        totalPages
+        total: countResult.total,
+        totalPages: Math.ceil(countResult.total / limit)
       }
     });
   } catch (error) {
     console.error('Erro ao listar projetos:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Erro interno do servidor',
-      message: error.message
-    });
+    res.status(500).json({ success: false, error: 'Erro interno do servidor', message: error.message });
   }
 });
 
@@ -71,28 +68,19 @@ router.get('/:id', async (req, res) => {
     const row = await getRow('SELECT * FROM projetos WHERE id = ?', [id]);
 
     if (!row) {
-      return res.status(404).json({
-        success: false,
-        error: 'Projeto não encontrado'
-      });
+      return res.status(404).json({ success: false, error: 'Projeto não encontrado' });
     }
 
     const projeto = {
       ...row,
+      parametros: row.parametros ? JSON.parse(row.parametros) : {},
       roteiro: row.roteiro ? JSON.parse(row.roteiro) : {}
     };
 
-    res.json({
-      success: true,
-      data: projeto
-    });
+    res.json({ success: true, data: projeto });
   } catch (error) {
     console.error('Erro ao buscar projeto:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Erro interno do servidor',
-      message: error.message
-    });
+    res.status(500).json({ success: false, error: 'Erro interno do servidor', message: error.message });
   }
 });
 
@@ -103,123 +91,60 @@ router.get('/nome/:nome', async (req, res) => {
     const row = await getRow('SELECT * FROM projetos WHERE nome = ?', [nome]);
 
     if (!row) {
-      return res.status(404).json({
-        success: false,
-        error: 'Projeto não encontrado'
-      });
+      return res.status(404).json({ success: false, error: 'Projeto não encontrado' });
     }
 
     const projeto = {
       ...row,
+      parametros: row.parametros ? JSON.parse(row.parametros) : {},
       roteiro: row.roteiro ? JSON.parse(row.roteiro) : {}
     };
 
-    res.json({
-      success: true,
-      data: projeto
-    });
+    res.json({ success: true, data: projeto });
   } catch (error) {
     console.error('Erro ao buscar projeto:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Erro interno do servidor',
-      message: error.message
-    });
-  }
-});
-
-// GET /orbis/projetos/status/:status - Buscar projetos por status
-router.get('/status/:status', async (req, res) => {
-  try {
-    const { status } = req.params;
-    const rows = await getAllRows('SELECT * FROM projetos WHERE status = ? ORDER BY data_criacao DESC', [status]);
-
-    const projetos = rows.map(row => ({
-      ...row,
-      roteiro: row.roteiro ? JSON.parse(row.roteiro) : {}
-    }));
-
-    res.json({
-      success: true,
-      data: projetos
-    });
-  } catch (error) {
-    console.error('Erro ao buscar projetos por status:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Erro interno do servidor',
-      message: error.message
-    });
+    res.status(500).json({ success: false, error: 'Erro interno do servidor', message: error.message });
   }
 });
 
 // POST /orbis/projetos - Criar novo projeto
 router.post('/', async (req, res) => {
   try {
-    const { nome, descricao, responsavel, roteiro, observacoes, status, user_id } = req.body;
+    const { nome, parametros, roteiro, centro, rota, idrota, user_id } = req.body;
 
-    // Validações
-    if (!nome || !responsavel) {
-      return res.status(400).json({
-        success: false,
-        error: 'Campos obrigatórios: nome, responsavel'
-      });
+    if (!nome || !parametros) {
+      return res.status(400).json({ success: false, error: 'Campos obrigatórios: nome, parametros' });
     }
 
-    // Verificar se nome já existe
     const existing = await getRow('SELECT id FROM projetos WHERE nome = ?', [nome]);
     if (existing) {
-      return res.status(409).json({
-        success: false,
-        error: 'Já existe um projeto com este nome'
-      });
+      return res.status(409).json({ success: false, error: 'Já existe um projeto com este nome' });
     }
 
-    // Validar estrutura do roteiro
-    if (roteiro) {
-      if (!roteiro.rotas || !Array.isArray(roteiro.rotas)) {
-        return res.status(400).json({
-          success: false,
-          error: 'Roteiro deve conter um array de rotas'
-        });
-      }
-    }
-
-    const query = `
-      INSERT INTO projetos 
-      (nome, descricao, responsavel, roteiro, observacoes, status, data_criacao)
-      VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-    `;
+    const query = `INSERT INTO projetos (nome, parametros, roteiro, centro, rota, idrota, data_criacao) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`;
 
     const result = await runQuery(query, [
       nome,
-      descricao || null,
-      responsavel,
+      JSON.stringify(parametros),
       roteiro ? JSON.stringify(roteiro) : null,
-      observacoes || null,
-      status || 'Planejamento'
+      centro || null,
+      rota || null,
+      idrota || null
     ]);
 
-    // Buscar o registro criado
     const newRecord = await getRow('SELECT * FROM projetos WHERE id = ?', [result.id]);
     const projeto = {
       ...newRecord,
+      parametros: JSON.parse(newRecord.parametros),
       roteiro: newRecord.roteiro ? JSON.parse(newRecord.roteiro) : {}
     };
 
     await registrarLog('projetos', result.id, 'CREATE', null, projeto, user_id);
 
-    res.status(201).json({
-      success: true,
-      data: projeto
-    });
+    res.status(201).json({ success: true, data: projeto });
   } catch (error) {
     console.error('Erro ao criar projeto:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Erro interno do servidor',
-      message: error.message
-    });
+    res.status(500).json({ success: false, error: 'Erro interno do servidor', message: error.message });
   }
 });
 
@@ -227,80 +152,51 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { nome, descricao, responsavel, roteiro, observacoes, status, user_id } = req.body;
+    const { nome, parametros, roteiro, centro, rota, idrota, user_id } = req.body;
 
-    // Verificar se projeto existe
     const existing = await getRow('SELECT * FROM projetos WHERE id = ?', [id]);
     if (!existing) {
-      return res.status(404).json({
-        success: false,
-        error: 'Projeto não encontrado'
-      });
+      return res.status(404).json({ success: false, error: 'Projeto não encontrado' });
     }
 
     const valoresAnteriores = {
       ...existing,
+      parametros: existing.parametros ? JSON.parse(existing.parametros) : {},
       roteiro: existing.roteiro ? JSON.parse(existing.roteiro) : {}
     };
 
-    // Verificar se nome já existe (exceto o próprio registro)
     if (nome && nome !== existing.nome) {
       const nameExists = await getRow('SELECT id FROM projetos WHERE nome = ? AND id != ?', [nome, id]);
       if (nameExists) {
-        return res.status(409).json({
-          success: false,
-          error: 'Já existe um projeto com este nome'
-        });
+        return res.status(409).json({ success: false, error: 'Já existe um projeto com este nome' });
       }
     }
 
-    // Validar estrutura do roteiro
-    if (roteiro) {
-      if (!roteiro.rotas || !Array.isArray(roteiro.rotas)) {
-        return res.status(400).json({
-          success: false,
-          error: 'Roteiro deve conter um array de rotas'
-        });
-      }
-    }
-
-    const query = `
-      UPDATE projetos 
-      SET nome = ?, descricao = ?, responsavel = ?, roteiro = ?, observacoes = ?, 
-          status = ?, data_modificacao = datetime('now')
-      WHERE id = ?
-    `;
+    const query = `UPDATE projetos SET nome = ?, parametros = ?, roteiro = ?, centro = ?, rota = ?, idrota = ?, data_modificacao = datetime('now') WHERE id = ?`;
 
     await runQuery(query, [
       nome || existing.nome,
-      descricao !== undefined ? descricao : existing.descricao,
-      responsavel || existing.responsavel,
+      parametros !== undefined ? JSON.stringify(parametros) : existing.parametros,
       roteiro !== undefined ? (roteiro ? JSON.stringify(roteiro) : null) : existing.roteiro,
-      observacoes !== undefined ? observacoes : existing.observacoes,
-      status || existing.status,
+      centro !== undefined ? centro : existing.centro,
+      rota !== undefined ? rota : existing.rota,
+      idrota !== undefined ? idrota : existing.idrota,
       id
     ]);
 
-    // Buscar o registro atualizado
     const updatedRecord = await getRow('SELECT * FROM projetos WHERE id = ?', [id]);
     const projeto = {
       ...updatedRecord,
+      parametros: JSON.parse(updatedRecord.parametros),
       roteiro: updatedRecord.roteiro ? JSON.parse(updatedRecord.roteiro) : {}
     };
 
     await registrarLog('projetos', id, 'UPDATE', valoresAnteriores, projeto, user_id);
 
-    res.json({
-      success: true,
-      data: projeto
-    });
+    res.json({ success: true, data: projeto });
   } catch (error) {
     console.error('Erro ao atualizar projeto:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Erro interno do servidor',
-      message: error.message
-    });
+    res.status(500).json({ success: false, error: 'Erro interno do servidor', message: error.message });
   }
 });
 
@@ -310,34 +206,24 @@ router.delete('/:id', async (req, res) => {
     const { id } = req.params;
     const { user_id } = req.body;
 
-    // Verificar se projeto existe
     const existing = await getRow('SELECT * FROM projetos WHERE id = ?', [id]);
     if (!existing) {
-      return res.status(404).json({
-        success: false,
-        error: 'Projeto não encontrado'
-      });
+      return res.status(404).json({ success: false, error: 'Projeto não encontrado' });
     }
 
     const valoresAnteriores = {
       ...existing,
+      parametros: existing.parametros ? JSON.parse(existing.parametros) : {},
       roteiro: existing.roteiro ? JSON.parse(existing.roteiro) : {}
     };
 
     await runQuery('DELETE FROM projetos WHERE id = ?', [id]);
     await registrarLog('projetos', id, 'DELETE', valoresAnteriores, null, user_id);
 
-    res.json({
-      success: true,
-      message: 'Projeto excluído permanentemente'
-    });
+    res.json({ success: true, message: 'Projeto excluído permanentemente' });
   } catch (error) {
     console.error('Erro ao excluir projeto:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Erro interno do servidor',
-      message: error.message
-    });
+    res.status(500).json({ success: false, error: 'Erro interno do servidor', message: error.message });
   }
 });
 
